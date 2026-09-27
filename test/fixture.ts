@@ -56,6 +56,47 @@ const PAGES: Record<string, Fixture> = {
   '/can-unknown': { body: page({ title: 'Canonical ins Ungewisse', desc: DESC, h1: ['C6'], head: '<link rel="canonical" href="/nicht-gecrawlt">' }) },
   // XSS-Probe (T2): Title mit Script-Tag darf im HTML-Bericht nicht ausführbar werden.
   '/xss': { body: page({ title: '<script>alert(1)</script>', desc: DESC, h1: ['XSS'] }) },
+  // hreflang (T4): korrektes Paar, Paar ohne Rückverweis, ungültiger Code, fehlender Selbstverweis.
+  '/hl-de': {
+    body: page({
+      title: 'hreflang Deutsch korrekt',
+      desc: DESC,
+      h1: ['DE'],
+      head: '<link rel="alternate" hreflang="de" href="/hl-de"><link rel="alternate" hreflang="en" href="/hl-en"><link rel="alternate" hreflang="x-default" href="/hl-de">',
+    }),
+  },
+  '/hl-en': {
+    body: page({
+      title: 'hreflang English correct',
+      desc: DESC,
+      h1: ['EN'],
+      head: '<link rel="alternate" hreflang="en" href="/hl-en"><link rel="alternate" hreflang="de" href="/hl-de"><link rel="alternate" hreflang="x-default" href="/hl-de">',
+    }),
+  },
+  '/hl-einseitig': {
+    body: page({
+      title: 'hreflang ohne Rückverweis',
+      desc: DESC,
+      h1: ['Einseitig'],
+      head: '<link rel="alternate" hreflang="de" href="/hl-einseitig"><link rel="alternate" hreflang="en" href="/hl-en">',
+    }),
+  },
+  '/hl-code': {
+    body: page({
+      title: 'hreflang mit ungültigem Code',
+      desc: DESC,
+      h1: ['Code'],
+      head: '<link rel="alternate" hreflang="english" href="/hl-code">',
+    }),
+  },
+  '/hl-selbst': {
+    body: page({
+      title: 'hreflang ohne Selbstverweis',
+      desc: DESC,
+      h1: ['Selbst'],
+      head: '<link rel="alternate" hreflang="en" href="/hl-en">',
+    }),
+  },
   '/js': {
     body: page({
       title: 'Lädt…',

@@ -91,6 +91,8 @@ export const SiteCheckSchema = z.union([
   z.object({ brokenLinks: z.literal('internal') }).strict(),
   z.object({ redirectingLinks: z.literal('internal') }).strict(),
   z.object({ canonicalTarget: z.literal('ok') }).strict(),
+  // valid = volle Prüfung; x-default = nur der Hinweis, dass x-default fehlt (eigene Regel, separat abschaltbar).
+  z.object({ hreflang: z.enum(['valid', 'x-default']) }).strict(),
 ]);
 
 export const SiteRuleSchema = z

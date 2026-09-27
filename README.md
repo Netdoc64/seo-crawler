@@ -86,7 +86,10 @@ Felder für `field`: `title`, `metaDescription`, `metaRobots`, `canonical`, `lan
 
 Seitenübergreifende Regeln (`scope: site`): `unique: <feld>`, `brokenLinks: internal`, `redirectingLinks: internal`,
 `canonicalTarget: ok` (Canonical zeigt auf Fehlerseite, Weiterleitung, noindex-Seite oder bildet eine Kette;
-Ziele, die nicht gecrawlt wurden, gelten als unbekannt und erzeugen keinen Befund).
+Ziele, die nicht gecrawlt wurden, gelten als unbekannt und erzeugen keinen Befund),
+`hreflang: valid` (Sprachcodes, Selbstverweis, doppelte Codes, Rückverweis, Ziel-Status; nur Seiten mit hreflang)
+und `hreflang: x-default` (nur der Hinweis, dass x-default fehlt – als eigene Regel separat abschaltbar).
+hreflang aus HTTP-`Link`-Header oder Sitemap wird nicht ausgewertet, nur das HTML.
 
 ### Plugins
 
