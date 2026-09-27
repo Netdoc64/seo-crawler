@@ -14,7 +14,7 @@ Nichts umsetzen, was unter „Nicht tun“ steht. Unklar? Im PR als offene Frage
 | T4 | hreflang prüfen | mittel | – |
 | T5 | Verwaiste Seiten und Sitemap-Abgleich | mittel | – |
 | T6 | Externe Links prüfen | groß | – |
-| T7 | SARIF-Ausgabe | klein | – |
+| T7 | SARIF-Ausgabe ✅ | klein | – |
 | T8 | Faire Verteilung über Hosts im Bulk-Modus | mittel | – |
 
 ---
