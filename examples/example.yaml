@@ -1,0 +1,50 @@
+# Beispielkonfiguration – alle Felder sind optional, gezeigt sind die Standardwerte
+# bzw. sinnvolle Beispiele. Relative Pfade gelten relativ zu dieser Datei.
+#
+#   npm run crawl -- -c examples/example.yaml
+
+name: example
+
+start:
+  urls:
+    - https://example.com/
+  # sitemaps:
+  #   - https://example.com/sitemap.xml
+  # urlFile: urls.txt          # eine URL pro Zeile, # für Kommentare
+
+scope:
+  # hosts: [example.com]       # leer = Hosts der Start-URLs (www und ohne www gelten als gleich)
+  include: []                  # Pfad-Globs; leer = alles
+  exclude: ["/warenkorb/**", "/konto/**", "/suche*"]
+  maxDepth: 3
+  maxPages: 1000               # gilt für gefundene Links, Start-URLs werden immer gescannt
+  followLinks: true            # false = Bulk-Modus: nur die Startliste
+
+render:
+  mode: auto                   # raw | render | auto
+  concurrency: 2
+  timeoutMs: 30000
+  waitUntil: networkidle       # load | domcontentloaded | networkidle
+  blockResources: [image, media, font]
+
+politeness:
+  concurrency: 4
+  perHost: 2
+  delayMs: 250
+  respectRobots: true
+  timeoutMs: 20000
+  # userAgent: "Mozilla/5.0 (compatible; seo-crawler/0.1; +https://github.com/Netdoc64/seo-crawler)"
+
+rules:
+  - builtin:default
+  - rules/shop.yaml
+
+ruleOverrides:
+  thin-content: { enabled: false }
+  image-alt: { severity: warning }
+
+plugins:
+  - plugins/insecure-links.ts
+
+output:
+  db: ../runs/seo-crawler.sqlite

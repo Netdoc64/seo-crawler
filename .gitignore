@@ -1,0 +1,6 @@
+node_modules/
+runs/
+*.sqlite
+*.sqlite-*
+report*.md
+report*.json

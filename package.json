@@ -1,0 +1,29 @@
+{
+  "name": "seo-crawler",
+  "version": "0.1.0",
+  "description": "Universeller SEO-Crawler mit JS-Rendering, Regel-Engine und Lauf-Vergleich – läuft lokal und als GitHub-Check.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "cli": "node --disable-warning=ExperimentalWarning src/cli.ts",
+    "crawl": "node --disable-warning=ExperimentalWarning src/cli.ts crawl",
+    "setup": "playwright install chromium",
+    "typecheck": "tsc",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "playwright": "^1.63.0",
+    "robots-parser": "^3.0.1",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2"
+  }
+}

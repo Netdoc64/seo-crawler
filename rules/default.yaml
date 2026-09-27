@@ -1,0 +1,152 @@
+# Grundregeln – werden mit `rules: [builtin:default]` geladen (Standard).
+# Überschreiben: gleiche id in einer eigenen Regeldatei, oder per ruleOverrides in der Config.
+#
+# Seitenregeln prüfen standardmäßig nur HTML-Seiten mit Status 200–299.
+# Mit applies.html: false und applies.status gelten sie auch für Fehlerseiten, PDFs usw.
+
+rules:
+  # --- Erreichbarkeit -------------------------------------------------------
+  - id: fetch-error
+    description: Seite war nicht abrufbar (DNS, Timeout, TLS, Weiterleitungsschleife)
+    severity: error
+    applies: { html: false, status: { max: 0 } }
+    check: { field: error, exists: false }
+    message: "Abruf fehlgeschlagen: {value}"
+
+  - id: status-ok
+    description: Seite antwortet mit 2xx
+    severity: error
+    applies: { html: false, status: { min: 100 } }
+    check: { field: status, range: { min: 200, max: 299 } }
+    message: "HTTP {value}"
+
+  - id: redirect-chain
+    description: Höchstens eine Weiterleitung bis zum Ziel
+    severity: warning
+    applies: { html: false, status: { min: 100 } }
+    check: { field: redirectCount, range: { max: 1 } }
+    message: "Weiterleitungskette mit {value} Sprüngen"
+
+  - id: slow-response
+    description: Server antwortet langsam (roher Abruf, ohne Rendern)
+    severity: info
+    source: raw
+    check: { field: timeMs, range: { max: 1500 } }
+    message: "Antwortzeit {value} ms"
+
+  # --- Kopf ----------------------------------------------------------------
+  - id: title
+    description: Seite hat einen Title
+    severity: error
+    check: { field: title, exists: true }
+
+  - id: title-length
+    description: Title zwischen 30 und 60 Zeichen
+    severity: warning
+    when: { field: title, exists: true }
+    check: { field: title, length: { min: 30, max: 60 } }
+
+  - id: meta-description
+    description: Seite hat eine Meta-Description
+    severity: warning
+    check: { field: metaDescription, exists: true }
+
+  - id: meta-description-length
+    description: Meta-Description zwischen 70 und 160 Zeichen
+    severity: info
+    when: { field: metaDescription, exists: true }
+    check: { field: metaDescription, length: { min: 70, max: 160 } }
+
+  - id: canonical
+    description: Canonical vorhanden und auf derselben Domain
+    severity: warning
+    check:
+      field: canonical
+      all:
+        - exists: true
+        - sameHost: true
+
+  - id: lang
+    description: <html lang> gesetzt
+    severity: info
+    check: { field: lang, exists: true }
+
+  - id: noindex
+    description: Seite ist von der Indexierung ausgeschlossen (meta robots oder X-Robots-Tag)
+    severity: info
+    check: { field: noindex, equals: false }
+    message: "Seite steht auf noindex"
+
+  # --- Inhalt --------------------------------------------------------------
+  - id: h1-single
+    description: Genau eine H1
+    severity: warning
+    check: { field: h1Count, range: { min: 1, max: 1 } }
+    message: "{value} H1-Überschriften"
+
+  - id: image-alt
+    description: Bilder haben ein alt-Attribut (leeres alt für Deko ist in Ordnung)
+    severity: info
+    check: { field: imagesMissingAlt, range: { max: 0 } }
+    message: "{value} Bilder ohne alt-Attribut"
+
+  - id: thin-content
+    description: Wenig Text auf der Seite
+    severity: info
+    applies: { indexable: true }
+    check: { field: wordCount, range: { min: 150 } }
+    message: "nur {value} Wörter"
+
+  - id: structured-data-valid
+    description: JSON-LD-Blöcke sind gültiges JSON
+    severity: warning
+    check: { field: jsonLdErrors, range: { max: 0 } }
+    message: "{value} JSON-LD-Blöcke nicht lesbar"
+
+  # --- JavaScript-Abhängigkeit (nur wenn gerendert wurde) ------------------
+  - id: js-dependent-title
+    description: Title steht schon im rohen HTML
+    severity: warning
+    check: { field: title, stableAcrossRender: true }
+
+  - id: js-dependent-h1
+    description: H1 steht schon im rohen HTML
+    severity: warning
+    check: { field: h1, stableAcrossRender: true }
+
+  - id: js-dependent-canonical
+    description: Canonical wird nicht erst per JavaScript gesetzt oder geändert
+    severity: warning
+    check: { field: canonical, stableAcrossRender: true }
+
+  - id: js-dependent-links
+    description: Interne Links sind ohne JavaScript sichtbar
+    severity: info
+    check: { field: internalLinks, stableAcrossRender: true }
+
+  # --- Seitenübergreifend --------------------------------------------------
+  - id: duplicate-title
+    description: Title auf mehreren indexierbaren Seiten gleich
+    scope: site
+    severity: warning
+    applies: { indexable: true }
+    check: { unique: title }
+
+  - id: duplicate-meta-description
+    description: Meta-Description auf mehreren indexierbaren Seiten gleich
+    scope: site
+    severity: info
+    applies: { indexable: true }
+    check: { unique: metaDescription }
+
+  - id: broken-internal-link
+    description: Interner Link auf eine Fehlerseite
+    scope: site
+    severity: error
+    check: { brokenLinks: internal }
+
+  - id: redirecting-internal-link
+    description: Interner Link auf eine Weiterleitung statt aufs Ziel
+    scope: site
+    severity: info
+    check: { redirectingLinks: internal }

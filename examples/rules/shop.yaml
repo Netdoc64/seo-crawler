@@ -1,0 +1,48 @@
+# Eigene Regeln für einen Shop – zeigt applies, when, source und die Kombinatoren.
+
+rules:
+  # Überschreibt die Grundregel gleicher id: Produktseiten dürfen längere Titles haben.
+  - id: title-length
+    severity: warning
+    when: { field: title, exists: true }
+    check: { field: title, length: { min: 30, max: 70 } }
+
+  - id: product-structured-data
+    description: Produktseiten liefern schema.org/Product
+    severity: error
+    applies: { path: ["/produkte/**"] }
+    check: { field: jsonLdTypes, contains: Product }
+
+  - id: product-structured-data-raw
+    description: Product-Markup steht schon im rohen HTML, nicht erst nach JavaScript
+    severity: warning
+    source: raw
+    applies: { path: ["/produkte/**"] }
+    check: { field: jsonLdTypes, contains: Product }
+
+  - id: brand-in-title
+    description: Markenname am Title-Ende
+    severity: info
+    applies: { exclude: ["/"] }
+    check: { field: title, matches: "\\| Beispielshop$" }
+
+  - id: category-canonical
+    description: Gefilterte Kategorieseiten verweisen per Canonical auf die ungefilterte Seite – oder stehen auf noindex
+    severity: warning
+    applies: { path: ["/kategorie/**"] }
+    when: { field: url, matches: "[?&](farbe|preis|sortierung)=" }
+    check:
+      any:
+        - { field: canonicalIsSelf, equals: false }
+        - { field: noindex, equals: true }
+
+  - id: og-image
+    description: Open-Graph-Bild für geteilte Links
+    severity: info
+    check: { field: og.og:image, exists: true }
+
+  - id: no-staging-links
+    description: Keine Links auf Staging- oder Test-Hosts
+    severity: error
+    check:
+      not: { field: links, matches: "https?://(staging|test|dev)\\." }

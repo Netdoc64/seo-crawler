@@ -1,0 +1,55 @@
+# Vorlage für ein PRIVATES Repo mit euren Site-Configs: .github/workflows/seo-check.yml
+# Die Engine kommt aus dem öffentlichen Repo, Configs und Ergebnisse bleiben privat.
+# Nur für eigene Seiten verwenden – GitHub Actions ist für Tests des eigenen Projekts gedacht.
+
+name: SEO-Check
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"   # montags 05:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: Netdoc64/seo-crawler
+          path: engine
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: engine/package-lock.json
+      - run: npm ci
+        working-directory: engine
+      - run: npx playwright install --with-deps chromium
+        working-directory: engine
+
+      # Letzten Lauf zurückholen, damit diff etwas zum Vergleichen hat.
+      - uses: actions/cache/restore@v4
+        with:
+          path: runs
+          key: seo-runs-${{ github.run_id }}
+          restore-keys: seo-runs-
+
+      - name: Crawl
+        run: >
+          node --disable-warning=ExperimentalWarning engine/src/cli.ts crawl
+          -c sites/vardiflowers.yaml --db runs/seo.sqlite --fail-on error --quiet
+
+      - name: Vergleich mit dem letzten Lauf
+        if: always()
+        run: node --disable-warning=ExperimentalWarning engine/src/cli.ts diff --db runs/seo.sqlite || true
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: runs
+          key: seo-runs-${{ github.run_id }}
