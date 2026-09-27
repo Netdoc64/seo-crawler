@@ -169,6 +169,51 @@ function runSiteRule(rule: SiteRule, pages: PageResult[]): Finding[] {
   }
   for (const p of pages) byUrl.set(p.url, p);
 
+  if ('hreflang' in check) {
+    // Sprachcode: x-default oder z. B. de, de-DE, de-1996, zh-Hant (Groß/Klein egal).
+    const langRe = /^[a-z]{2,3}(-([a-z]{2}|\d{3}|[a-z]{4}))?$/i;
+    for (const { p } of sources) {
+      const entries = (p.rendered ?? p.raw)?.hreflang ?? [];
+      if (entries.length === 0) continue;
+      const self = normalizeUrl(p.finalUrl);
+
+      if (check.hreflang === 'x-default') {
+        if (!entries.some((e) => e.lang.toLowerCase() === 'x-default')) add(p.url, 'hreflang: kein x-default-Eintrag');
+        continue;
+      }
+
+      const byLang = new Map<string, string[]>();
+      for (const e of entries) {
+        const code = e.lang.toLowerCase();
+        if (code !== 'x-default' && !langRe.test(e.lang)) add(p.url, `hreflang: ungültiger Sprachcode „${e.lang}“`);
+        byLang.set(code, [...(byLang.get(code) ?? []), e.href]);
+      }
+      for (const [code, hrefs] of byLang) {
+        const distinct = [...new Set(hrefs)];
+        if (distinct.length > 1) add(p.url, `hreflang „${code}“ zeigt auf mehrere Ziele: ${distinct.join(', ')}`);
+      }
+      if (!entries.some((e) => normalizeUrl(e.href) === self)) add(p.url, 'hreflang: kein Selbstverweis auf die eigene URL');
+
+      for (const e of entries) {
+        const href = normalizeUrl(e.href);
+        if (!href) continue;
+        const target = byUrl.get(href);
+        if (!target || target.robotsBlocked) continue; // nicht gecrawlt → Rückverweis und Status unbekannt
+        if (target.status < 200 || target.status >= 300) {
+          add(p.url, `hreflang „${e.lang}“ zeigt auf ${href} (${target.status || target.error})`);
+        } else if (target.redirects.length > 0 && href !== normalizeUrl(target.finalUrl)) {
+          add(p.url, `hreflang „${e.lang}“ zeigt auf Weiterleitung nach ${target.finalUrl}`);
+        }
+        // Rückverweis: das Ziel muss diese Seite ebenfalls nennen.
+        const back = (target.rendered ?? target.raw)?.hreflang ?? [];
+        if (!back.some((b) => normalizeUrl(b.href) === self)) {
+          add(p.url, `hreflang „${e.lang}“: fehlender Rückverweis von ${href}`);
+        }
+      }
+    }
+    return out;
+  }
+
   if ('canonicalTarget' in check) {
     for (const { p } of sources) {
       const canonical = (p.rendered ?? p.raw)?.canonical;

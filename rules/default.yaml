@@ -156,3 +156,15 @@ rules:
     scope: site
     severity: warning
     check: { canonicalTarget: ok }
+
+  - id: hreflang
+    description: hreflang-Einträge sind gültig, selbstreferenziell und gegenseitig verlinkt
+    scope: site
+    severity: warning
+    check: { hreflang: valid }
+
+  - id: hreflang-x-default
+    description: hreflang-Cluster hat einen x-default-Eintrag
+    scope: site
+    severity: info
+    check: { hreflang: x-default }

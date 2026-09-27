@@ -11,7 +11,7 @@ Nichts umsetzen, was unter „Nicht tun“ steht. Unklar? Im PR als offene Frage
 | T1 | Sauberer Abbruch mit Strg+C | klein | – |
 | T2 | HTML-Bericht ✅ | mittel | – |
 | T3 | Canonical-Ziel prüfen ✅ | klein | – |
-| T4 | hreflang prüfen | mittel | – |
+| T4 | hreflang prüfen ✅ | mittel | – |
 | T5 | Verwaiste Seiten und Sitemap-Abgleich | mittel | – |
 | T6 | Externe Links prüfen | groß | – |
 | T7 | SARIF-Ausgabe ✅ | klein | – |
