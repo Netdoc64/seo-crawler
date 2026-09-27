@@ -54,6 +54,8 @@ const PAGES: Record<string, Fixture> = {
   '/loop-a': { body: page({ title: 'Schleife A', desc: DESC, h1: ['LA'], head: '<link rel="canonical" href="/loop-b">' }) },
   '/loop-b': { body: page({ title: 'Schleife B', desc: DESC, h1: ['LB'], head: '<link rel="canonical" href="/loop-a">' }) },
   '/can-unknown': { body: page({ title: 'Canonical ins Ungewisse', desc: DESC, h1: ['C6'], head: '<link rel="canonical" href="/nicht-gecrawlt">' }) },
+  // XSS-Probe (T2): Title mit Script-Tag darf im HTML-Bericht nicht ausführbar werden.
+  '/xss': { body: page({ title: '<script>alert(1)</script>', desc: DESC, h1: ['XSS'] }) },
   '/js': {
     body: page({
       title: 'Lädt…',

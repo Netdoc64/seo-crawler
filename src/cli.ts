@@ -5,6 +5,7 @@ import { loadConfig } from './config.ts';
 import { crawl } from './crawler/crawler.ts';
 import { diffRuns, formatDiff } from './diff.ts';
 import { exceeds, formatConsole, formatMarkdown, githubAnnotations, summarize } from './report.ts';
+import { formatHtml } from './report-html.ts';
 import { formatSarif } from './report-sarif.ts';
 import { runRules } from './rules/engine.ts';
 import { loadRules } from './rules/load.ts';
@@ -27,6 +28,7 @@ Befehle
     --md <datei>           Bericht als Markdown
     --json <datei>         Befunde und Zusammenfassung als JSON
     --sarif <datei>        Befunde als SARIF für GitHub Code Scanning (braucht -c)
+    --html <datei>         eigenständiger HTML-Bericht (auch bei report)
     --fail-on error|warning|info|none   Exitcode 1 ab dieser Schwere (Standard: none)
     -q, --quiet            keine Fortschrittszeilen
   rules [-c <datei>]       aktive Regeln anzeigen (prüft die Regeldateien)
@@ -73,6 +75,7 @@ async function cmdCrawl(args: string[]): Promise<number> {
       db: { type: 'string' },
       md: { type: 'string' },
       json: { type: 'string' },
+      html: { type: 'string' },
       sarif: { type: 'string' },
       'fail-on': { type: 'string', default: 'none' },
       quiet: { type: 'boolean', short: 'q' },
@@ -122,7 +125,16 @@ async function cmdCrawl(args: string[]): Promise<number> {
     if (values.sarif) {
       const ruleInfos = [...rules.page, ...rules.site, ...rules.plugins];
       const configPath = path.relative(process.cwd(), path.resolve(values.config!)) || path.basename(values.config!);
-      await writeFile(values.sarif, formatSarif(findings, ruleInfos, configPath));
+     
+    if (values.html) {
+      const descriptions = Object.fromEntries(
+        [...rules.page, ...rules.site, ...rules.plugins].map((r) => [r.id, r.description ?? '']),
+      );
+      await writeFile(
+        values.html,
+        formatHtml({ summary, pages, descriptions, generatedAt: new Date().toISOString() }),
+      );
+    } await writeFile(values.sarif, formatSarif(findings, ruleInfos, configPath));
     }
     if (process.env.GITHUB_ACTIONS === 'true') for (const line of githubAnnotations(findings)) console.log(line);
     console.error(`\nGespeichert als Lauf #${runId} in ${config.output.db}`);
@@ -150,7 +162,7 @@ function openStore(args: string[]) {
   const { values, positionals } = parseArgs({
     args,
     allowPositionals: true,
-    options: { db: { type: 'string' }, md: { type: 'string' }, json: { type: 'string' } },
+    options: { db: { type: 'string' }, md: { type: 'string' }, json: { type: 'string' }, html: { type: 'string' } },
   });
   return { store: new Store(values.db ?? DEFAULT_DB), values, positionals };
 }
@@ -178,9 +190,12 @@ async function cmdReport(args: string[]): Promise<number> {
     const run = positionals[0] ? store.getRun(Number(positionals[0])) : (store.listRuns()[0] ?? null);
     if (!run) throw new Error('Lauf nicht gefunden.');
     const findings = store.loadFindings(run.id);
-    const summary = summarize(run.id, run.name, store.loadPages(run.id), findings);
+    const pages = store.loadPages(run.id);
+    const summary = summarize(run.id, run.name, pages, findings);
     console.log(formatConsole(summary, 10));
     await writeOutputs(values.md, values.json, formatMarkdown(summary), { summary: { ...summary, rules: undefined }, findings });
+    // Die Regeln sind hier evtl. nicht mehr geladen – dann eben ohne Beschreibung.
+    if (values.html) await writeFile(values.html, formatHtml({ summary, pages, generatedAt: new Date().toISOString() }));
     return 0;
   } finally {
     store.close();
