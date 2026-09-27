@@ -26,7 +26,7 @@ Ohne Browser: `--mode raw`. Nur eine URL-Liste prüfen, ohne Links zu folgen: `-
 | Umfang | Start über URLs, URL-Datei oder Sitemap (auch Index und .gz); Host-, Pfad- und Tiefenfilter |
 | Speicher | jeder Lauf als Snapshot in SQLite (`node:sqlite`) |
 | Nachverfolgung | `diff` zeigt neue/verschwundene Seiten, geänderte Felder, neue und behobene Befunde |
-| Ausgabe | Konsole, Markdown, JSON; in GitHub Actions zusätzlich Job-Zusammenfassung und Annotationen |
+| Ausgabe | Konsole, Markdown, JSON, SARIF; in GitHub Actions zusätzlich Job-Zusammenfassung und Annotationen |
 
 ## Befehle
 
@@ -40,6 +40,9 @@ Ohne Browser: `--mode raw`. Nur eine URL-Liste prüfen, ohne Links zu folgen: `-
 
 Aufruf über `npm run cli -- <befehl> …`, alle Optionen mit `npm run cli -- help`.
 `--fail-on error|warning|info` setzt den Exitcode 1, sobald ein Befund dieser Schwere auftritt.
+`--sarif datei.sarif` schreibt die Befunde als SARIF 2.1.0 für GitHub Code Scanning. Code Scanning braucht Dateiorte
+im Repo – als Ort dient die Config-Datei, die URL steht in der Meldung. Deshalb geht `--sarif` nur zusammen mit `-c`.
+Über `partialFingerprints` erkennt GitHub dieselbe Meldung über Läufe hinweg und schließt behobene automatisch.
 
 ## Konfiguration
 

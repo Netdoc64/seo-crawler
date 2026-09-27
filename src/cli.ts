@@ -1,9 +1,11 @@
 import { appendFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from './config.ts';
 import { crawl } from './crawler/crawler.ts';
 import { diffRuns, formatDiff } from './diff.ts';
 import { exceeds, formatConsole, formatMarkdown, githubAnnotations, summarize } from './report.ts';
+import { formatSarif } from './report-sarif.ts';
 import { runRules } from './rules/engine.ts';
 import { loadRules } from './rules/load.ts';
 import { Store } from './store/db.ts';
@@ -24,6 +26,7 @@ Befehle
     --sitemap <url>        Sitemap als Startliste (mehrfach möglich)
     --md <datei>           Bericht als Markdown
     --json <datei>         Befunde und Zusammenfassung als JSON
+    --sarif <datei>        Befunde als SARIF für GitHub Code Scanning (braucht -c)
     --fail-on error|warning|info|none   Exitcode 1 ab dieser Schwere (Standard: none)
     -q, --quiet            keine Fortschrittszeilen
   rules [-c <datei>]       aktive Regeln anzeigen (prüft die Regeldateien)
@@ -70,12 +73,15 @@ async function cmdCrawl(args: string[]): Promise<number> {
       db: { type: 'string' },
       md: { type: 'string' },
       json: { type: 'string' },
+      sarif: { type: 'string' },
       'fail-on': { type: 'string', default: 'none' },
       quiet: { type: 'boolean', short: 'q' },
     },
   });
   const failOn = values['fail-on'] as (typeof FAIL_LEVELS)[number];
   if (!FAIL_LEVELS.includes(failOn)) throw new Error(`--fail-on: erwartet ${FAIL_LEVELS.join('|')}`);
+  // Code Scanning braucht einen Dateiort im Repo – ohne Config-Datei gibt es keinen sinnvollen Ort.
+  if (values.sarif && !values.config) throw new Error('--sarif braucht eine Config-Datei (-c), deren Pfad als Ort dient.');
 
   const config = await loadConfig(values.config, {
     urls: positionals,
@@ -113,6 +119,11 @@ async function cmdCrawl(args: string[]): Promise<number> {
     const summary = summarize(runId, config.name, pages, findings);
     console.log(`\n${formatConsole(summary)}`);
     await writeOutputs(values.md, values.json, formatMarkdown(summary), { summary: { ...summary, rules: undefined }, findings });
+    if (values.sarif) {
+      const ruleInfos = [...rules.page, ...rules.site, ...rules.plugins];
+      const configPath = path.relative(process.cwd(), path.resolve(values.config!)) || path.basename(values.config!);
+      await writeFile(values.sarif, formatSarif(findings, ruleInfos, configPath));
+    }
     if (process.env.GITHUB_ACTIONS === 'true') for (const line of githubAnnotations(findings)) console.log(line);
     console.error(`\nGespeichert als Lauf #${runId} in ${config.output.db}`);
     return exceeds(findings, failOn) ? 1 : 0;

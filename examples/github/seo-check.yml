@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write   # SARIF an Code Scanning hochladen
 
 jobs:
   crawl:
@@ -43,6 +44,13 @@ jobs:
         run: >
           node --disable-warning=ExperimentalWarning engine/src/cli.ts crawl
           -c sites/vardiflowers.yaml --db runs/seo.sqlite --fail-on error --quiet
+          --sarif ergebnisse.sarif
+
+      # Befunde als Code-Scanning-Warnungen (bleiben über Läufe bestehen, behobene schließen sich).
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: ergebnisse.sarif
 
       - name: Vergleich mit dem letzten Lauf
         if: always()
