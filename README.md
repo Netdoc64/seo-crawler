@@ -93,6 +93,8 @@ GitHub Actions nur für eigene Seiten nutzen, nicht als allgemeiner Crawler für
 
 ## Entwicklung
 
+Konventionen: [AGENTS.md](AGENTS.md) · offene Aufgaben: [docs/PLAN.md](docs/PLAN.md)
+
 ```powershell
 npm run typecheck
 npm test
