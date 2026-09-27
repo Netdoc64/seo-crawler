@@ -43,6 +43,9 @@ Aufruf über `npm run cli -- <befehl> …`, alle Optionen mit `npm run cli -- he
 `--sarif datei.sarif` schreibt die Befunde als SARIF 2.1.0 für GitHub Code Scanning. Code Scanning braucht Dateiorte
 im Repo – als Ort dient die Config-Datei, die URL steht in der Meldung. Deshalb geht `--sarif` nur zusammen mit `-c`.
 Über `partialFingerprints` erkennt GitHub dieselbe Meldung über Läufe hinweg und schließt behobene automatisch.
+`--html bericht.html` (bei `crawl` und `report`) schreibt einen eigenständigen HTML-Bericht ohne externe Ressourcen:
+Filter nach Schwere und Regel, Suche in URL und Text, sortierbare Seitenliste, Hell/Dunkel über `prefers-color-scheme`.
+Bei `report` sind die Regelbeschreibungen nur enthalten, wenn sie noch bekannt sind – sonst bleibt die Spalte leer.
 
 ## Konfiguration
 
