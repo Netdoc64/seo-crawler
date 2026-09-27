@@ -90,6 +90,7 @@ export const SiteCheckSchema = z.union([
   z.object({ unique: z.string() }).strict(),
   z.object({ brokenLinks: z.literal('internal') }).strict(),
   z.object({ redirectingLinks: z.literal('internal') }).strict(),
+  z.object({ canonicalTarget: z.literal('ok') }).strict(),
 ]);
 
 export const SiteRuleSchema = z

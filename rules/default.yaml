@@ -150,3 +150,9 @@ rules:
     scope: site
     severity: info
     check: { redirectingLinks: internal }
+
+  - id: canonical-target
+    description: Canonical zeigt auf eine erreichbare, indexierbare Endadresse (keine Fehlerseite, Weiterleitung, noindex oder Kette)
+    scope: site
+    severity: warning
+    check: { canonicalTarget: ok }

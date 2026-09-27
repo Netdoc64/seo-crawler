@@ -37,6 +37,23 @@ const PAGES: Record<string, Fixture> = {
   '/b': { body: page({ title: 'Doppelter Titel für zwei verschiedene Seiten', h1: ['B'], links: ['/'] }) },
   '/alt': { status: 301, headers: { location: '/a' } },
   '/privat': { body: page({ title: 'Privat', h1: ['Privat'] }) },
+  // Canonical-Ziele (T3): Quellseiten zeigen per Canonical auf fehlerhafte Ziele.
+  '/can-404': { body: page({ title: 'Canonical auf Fehlerseite', desc: DESC, h1: ['C1'], head: '<link rel="canonical" href="/fehlt">' }) },
+  '/can-redirect': { body: page({ title: 'Canonical auf Weiterleitung', desc: DESC, h1: ['C2'], head: '<link rel="canonical" href="/alt">' }) },
+  '/can-noindex': { body: page({ title: 'Canonical auf noindex', desc: DESC, h1: ['C3'], head: '<link rel="canonical" href="/noindex-ziel">' }) },
+  '/noindex-ziel': {
+    body: page({
+      title: 'Noindex-Zielseite',
+      desc: DESC,
+      h1: ['N'],
+      head: '<meta name="robots" content="noindex"><link rel="canonical" href="/noindex-ziel">',
+    }),
+  },
+  '/can-chain': { body: page({ title: 'Canonical-Kette Anfang', desc: DESC, h1: ['C4'], head: '<link rel="canonical" href="/can-mitte">' }) },
+  '/can-mitte': { body: page({ title: 'Canonical-Kette Mitte', desc: DESC, h1: ['C5'], head: '<link rel="canonical" href="/a">' }) },
+  '/loop-a': { body: page({ title: 'Schleife A', desc: DESC, h1: ['LA'], head: '<link rel="canonical" href="/loop-b">' }) },
+  '/loop-b': { body: page({ title: 'Schleife B', desc: DESC, h1: ['LB'], head: '<link rel="canonical" href="/loop-a">' }) },
+  '/can-unknown': { body: page({ title: 'Canonical ins Ungewisse', desc: DESC, h1: ['C6'], head: '<link rel="canonical" href="/nicht-gecrawlt">' }) },
   '/js': {
     body: page({
       title: 'Lädt…',
