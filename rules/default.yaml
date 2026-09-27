@@ -168,3 +168,15 @@ rules:
     scope: site
     severity: info
     check: { hreflang: x-default }
+
+  - id: orphan-from-sitemap
+    description: Seite steht in der Sitemap, aber kein interner Link zeigt darauf
+    scope: site
+    severity: info
+    check: { orphans: sitemap }
+
+  - id: missing-from-sitemap
+    description: Indexierbare Seite fehlt in der Sitemap (nur aktiv, wenn eine Sitemap konfiguriert ist)
+    scope: site
+    severity: info
+    check: { missingFromSitemap: true }

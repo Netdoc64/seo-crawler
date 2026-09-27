@@ -4,6 +4,13 @@ import { errMsg } from '../util.ts';
 import { effectiveFields, getPath, pageFields } from './fields.ts';
 import type { Applies, Check, Fields, Range, RuleSet, SiteRule } from './schema.ts';
 
+export interface SiteContext {
+  /** Normalisierte URLs aller konfigurierten Sitemaps; null = keine Sitemap angegeben. */
+  sitemapUrls: Set<string> | null;
+  /** false = es wurde keinen Links gefolgt, die Verwaist-Prüfung ergibt dann keinen Sinn. */
+  followLinks: boolean;
+}
+
 export interface EvalContext {
   fields: Fields;
   raw: Fields | null;
@@ -130,7 +137,7 @@ function fill(template: string, vars: Record<string, unknown>): string {
   });
 }
 
-function runSiteRule(rule: SiteRule, pages: PageResult[]): Finding[] {
+function runSiteRule(rule: SiteRule, pages: PageResult[], site: SiteContext): Finding[] {
   const out: Finding[] = [];
   const add = (url: string, detail: string) =>
     out.push({
@@ -168,6 +175,37 @@ function runSiteRule(rule: SiteRule, pages: PageResult[]): Finding[] {
     for (const hop of p.redirects) byUrl.set(hop.url, p);
   }
   for (const p of pages) byUrl.set(p.url, p);
+
+  if ('orphans' in check) {
+    // Ohne Linkverfolgung ist „kein Link zeigt hierher“ nicht aussagekräftig.
+    if (!site.followLinks) return out;
+    // Alle Link-Ziele sammeln; ein Link auf eine Weiterleitung zählt als Link auf deren Ziel.
+    const linked = new Set<string>();
+    for (const p of pages) {
+      for (const link of (p.rendered ?? p.raw)?.links ?? []) {
+        if (!link.internal) continue;
+        const target = byUrl.get(link.href);
+        linked.add(target ? target.finalUrl : link.href);
+      }
+    }
+    for (const p of pages) {
+      if (p.seedSource !== 'sitemap') continue;
+      if (linked.has(p.url) || linked.has(p.finalUrl)) continue;
+      add(p.url, 'Steht in der Sitemap, aber kein interner Link zeigt hierher');
+    }
+    return out;
+  }
+
+  if ('missingFromSitemap' in check) {
+    if (!site.sitemapUrls) return out;
+    for (const { p, f } of sources) {
+      if (p.seedSource === 'sitemap') continue;
+      if (f.indexable !== true) continue;
+      if (site.sitemapUrls.has(p.url) || site.sitemapUrls.has(p.finalUrl)) continue;
+      add(p.url, 'Indexierbare Seite fehlt in der Sitemap');
+    }
+    return out;
+  }
 
   if ('hreflang' in check) {
     // Sprachcode: x-default oder z. B. de, de-DE, de-1996, zh-Hant (Groß/Klein egal).
@@ -261,7 +299,8 @@ function runSiteRule(rule: SiteRule, pages: PageResult[]): Finding[] {
   return out;
 }
 
-export function runRules(pages: PageResult[], rules: RuleSet): Finding[] {
+export function runRules(pages: PageResult[], rules: RuleSet, site?: SiteContext): Finding[] {
+  const siteCtx: SiteContext = site ?? { sitemapUrls: null, followLinks: true };
   const findings: Finding[] = [];
 
   for (const p of pages) {
@@ -301,7 +340,7 @@ export function runRules(pages: PageResult[], rules: RuleSet): Finding[] {
     }
   }
 
-  for (const rule of rules.site) findings.push(...runSiteRule(rule, pages));
+  for (const rule of rules.site) findings.push(...runSiteRule(rule, pages, siteCtx));
   for (const plugin of rules.plugins) {
     if (!plugin.checkSite) continue;
     try {

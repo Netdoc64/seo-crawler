@@ -90,6 +90,11 @@ Ziele, die nicht gecrawlt wurden, gelten als unbekannt und erzeugen keinen Befun
 `hreflang: valid` (Sprachcodes, Selbstverweis, doppelte Codes, Rückverweis, Ziel-Status; nur Seiten mit hreflang)
 und `hreflang: x-default` (nur der Hinweis, dass x-default fehlt – als eigene Regel separat abschaltbar).
 hreflang aus HTTP-`Link`-Header oder Sitemap wird nicht ausgewertet, nur das HTML.
+`orphans: sitemap` (Sitemap-URL, auf die kein interner Link zeigt; Links über Weiterleitungen zählen aufs Ziel;
+entfällt bei `followLinks: false`) und `missingFromSitemap: true` (indexierbare Seite fehlt in der Sitemap –
+nur aktiv, wenn mindestens eine Sitemap konfiguriert ist). Start-URLs merken sich ihre Herkunft
+(`url` schlägt `file` schlägt `sitemap`); www und nackte Domain gelten als dieselbe Site, die URLs selbst
+werden exakt (nach `normalizeUrl`) verglichen.
 
 ### Plugins
 
