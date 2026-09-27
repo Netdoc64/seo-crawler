@@ -78,7 +78,9 @@ Felder für `field`: `title`, `metaDescription`, `metaRobots`, `canonical`, `lan
 `timeMs`, `bytes`, `path`, `url`, `depth`, `xRobotsTag`, `noindex`, `canonicalIsSelf`, `indexable`, `h1Count`,
 `imagesMissingAlt`, `internalLinks`, `externalLinks`, `rendered`, `error`, `renderError`.
 
-Seitenübergreifende Regeln (`scope: site`): `unique: <feld>`, `brokenLinks: internal`, `redirectingLinks: internal`.
+Seitenübergreifende Regeln (`scope: site`): `unique: <feld>`, `brokenLinks: internal`, `redirectingLinks: internal`,
+`canonicalTarget: ok` (Canonical zeigt auf Fehlerseite, Weiterleitung, noindex-Seite oder bildet eine Kette;
+Ziele, die nicht gecrawlt wurden, gelten als unbekannt und erzeugen keinen Befund).
 
 ### Plugins
 

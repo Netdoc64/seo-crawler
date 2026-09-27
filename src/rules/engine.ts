@@ -1,5 +1,5 @@
 import type { Finding, PageResult } from '../types.ts';
-import { globToRegExp, isHtml, siteKey } from '../url.ts';
+import { globToRegExp, isHtml, normalizeUrl, siteKey } from '../url.ts';
 import { errMsg } from '../util.ts';
 import { effectiveFields, getPath, pageFields } from './fields.ts';
 import type { Applies, Check, Fields, Range, RuleSet, SiteRule } from './schema.ts';
@@ -168,6 +168,35 @@ function runSiteRule(rule: SiteRule, pages: PageResult[]): Finding[] {
     for (const hop of p.redirects) byUrl.set(hop.url, p);
   }
   for (const p of pages) byUrl.set(p.url, p);
+
+  if ('canonicalTarget' in check) {
+    for (const { p } of sources) {
+      const canonical = (p.rendered ?? p.raw)?.canonical;
+      if (!canonical) continue;
+      const target = normalizeUrl(canonical);
+      // Selbstverweis (auch mit anderem Slash/Query) und fremde Domains sind hier nicht gemeint –
+      // letztere meldet schon die Seitenregel `canonical`.
+      if (!target || target === normalizeUrl(p.finalUrl)) continue;
+      if (siteKey(new URL(target).hostname) !== siteKey(new URL(p.finalUrl).hostname)) continue;
+      const hit = byUrl.get(target);
+      if (!hit || hit === p || hit.robotsBlocked) continue; // Ziel unbekannt = nicht falsch
+      if (hit.status < 200 || hit.status >= 300) {
+        add(p.url, `Canonical zeigt auf ${target} (${hit.status || hit.error})`);
+      } else if (hit.redirects.length > 0 && target !== normalizeUrl(hit.finalUrl)) {
+        add(p.url, `Canonical zeigt auf Weiterleitung nach ${hit.finalUrl}`);
+      } else if (effectiveFields(hit).noindex) {
+        add(p.url, `Canonical zeigt auf noindex-Seite ${target}`);
+      } else {
+        // Nur einen Schritt weiterschauen – Schleifen (a → b → a) werden so einmal gemeldet.
+        const next = (hit.rendered ?? hit.raw)?.canonical;
+        const nextUrl = next ? normalizeUrl(next) : null;
+        if (nextUrl && nextUrl !== normalizeUrl(hit.finalUrl)) {
+          add(p.url, `Canonical-Kette: ${p.url} → ${target} → ${nextUrl}`);
+        }
+      }
+    }
+    return out;
+  }
 
   for (const { p } of sources) {
     const seen = new Set<string>();
