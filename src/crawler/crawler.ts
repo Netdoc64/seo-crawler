@@ -13,38 +13,57 @@ import { loadSitemap } from './sitemap.ts';
 export interface CrawlHooks {
   onPage?(page: PageResult, progress: { done: number; queued: number }): void;
   onWarn?(message: string): void;
+  /** Nach dem Sammeln der Start-URLs: alle URLs aus Sitemaps (normalisiert). */
+  onSeeds?(info: { sitemapUrls: Set<string> }): void;
 }
 
-async function collectSeeds(config: Config, warn: (m: string) => void): Promise<string[]> {
-  const raw = [...config.start.urls];
+export interface Seed {
+  url: string;
+  source: 'url' | 'file' | 'sitemap';
+}
+
+async function collectSeeds(config: Config, warn: (m: string) => void): Promise<{ seeds: Seed[]; sitemapUrls: Set<string> }> {
+  const raw: { url: string; source: Seed['source'] }[] = config.start.urls.map((url) => ({ url, source: 'url' }));
   if (config.start.urlFile) {
     const lines = (await readFile(config.start.urlFile, 'utf8')).split(/\r?\n/).map((l) => l.trim());
-    raw.push(...lines.filter((l) => l && !l.startsWith('#')));
+    raw.push(...lines.filter((l) => l && !l.startsWith('#')).map((url) => ({ url, source: 'file' as const })));
   }
+  const sitemapUrls = new Set<string>();
   for (const sitemap of config.start.sitemaps) {
     try {
-      raw.push(...(await loadSitemap(sitemap, config.politeness)));
+      for (const url of await loadSitemap(sitemap, config.politeness)) {
+        raw.push({ url, source: 'sitemap' });
+        const n = normalizeUrl(url);
+        if (n) sitemapUrls.add(n);
+      }
     } catch (err) {
       warn(`Sitemap ${sitemap}: ${errMsg(err)}`);
     }
   }
-  const seeds: string[] = [];
-  for (const url of raw) {
+  // Eine URL in mehreren Quellen: url gewinnt vor file vor sitemap.
+  const rank = { url: 0, file: 1, sitemap: 2 };
+  const byUrl = new Map<string, Seed>();
+  for (const { url, source } of raw) {
     const n = normalizeUrl(url);
-    if (n) seeds.push(n);
-    else warn(`ungültige URL übersprungen: ${url}`);
+    if (!n) {
+      warn(`ungültige URL übersprungen: ${url}`);
+      continue;
+    }
+    const known = byUrl.get(n);
+    if (!known || rank[source] < rank[known.source]) byUrl.set(n, { url: n, source });
   }
-  return seeds;
+  return { seeds: [...byUrl.values()], sitemapUrls };
 }
 
 export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<PageResult[]> {
   const pol = config.politeness;
   const warn = hooks.onWarn ?? (() => {});
-  const seeds = await collectSeeds(config, warn);
+  const { seeds, sitemapUrls } = await collectSeeds(config, warn);
   if (seeds.length === 0) throw new Error('Keine Start-URLs – urls, urlFile oder sitemaps angeben.');
+  hooks.onSeeds?.({ sitemapUrls });
 
   const sites = new Set(
-    (config.scope.hosts.length ? config.scope.hosts : seeds.map((u) => new URL(u).hostname)).map(siteKey),
+    (config.scope.hosts.length ? config.scope.hosts : seeds.map((s) => new URL(s.url).hostname)).map(siteKey),
   );
   const include = config.scope.include.map(globToRegExp);
   const exclude = config.scope.exclude.map(globToRegExp);
@@ -56,7 +75,7 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
   };
 
   const frontier = new Frontier(config.scope.maxPages);
-  for (const url of seeds) frontier.add({ url, depth: 0, foundOn: null }, true);
+  for (const seed of seeds) frontier.add({ url: seed.url, depth: 0, foundOn: null, seedSource: seed.source }, true);
 
   const robots = new RobotsCache(pol.userAgent, pol.timeoutMs);
   const limiter = new HostLimiter(pol.perHost, pol.delayMs);
@@ -87,6 +106,7 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
       finalUrl: item.url,
       depth: item.depth,
       foundOn: item.foundOn,
+      ...(item.seedSource ? { seedSource: item.seedSource } : {}),
       status: 0,
       contentType: null,
       headers: {},

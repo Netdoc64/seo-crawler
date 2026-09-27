@@ -93,6 +93,8 @@ export const SiteCheckSchema = z.union([
   z.object({ canonicalTarget: z.literal('ok') }).strict(),
   // valid = volle Prüfung; x-default = nur der Hinweis, dass x-default fehlt (eigene Regel, separat abschaltbar).
   z.object({ hreflang: z.enum(['valid', 'x-default']) }).strict(),
+  z.object({ orphans: z.literal('sitemap') }).strict(),
+  z.object({ missingFromSitemap: z.literal(true) }).strict(),
 ]);
 
 export const SiteRuleSchema = z

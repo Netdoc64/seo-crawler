@@ -54,6 +54,8 @@ export interface PageResult {
   finalUrl: string;
   depth: number;
   foundOn: string | null;
+  /** Nur bei Start-URLs: woher sie kamen. url schlägt file schlägt sitemap. */
+  seedSource?: 'url' | 'file' | 'sitemap';
   /** Status am Ende der Weiterleitungskette; 0 = Netzfehler. */
   status: number;
   contentType: string | null;

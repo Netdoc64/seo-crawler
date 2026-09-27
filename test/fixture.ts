@@ -97,6 +97,42 @@ const PAGES: Record<string, Fixture> = {
       head: '<link rel="alternate" hreflang="en" href="/hl-en">',
     }),
   },
+  // Verwaist/Sitemap (T5): eigener Zweig, damit die anderen Tests unberührt bleiben.
+  '/sitemap.xml': {
+    type: 'application/xml',
+    // __ORIGIN__ wird beim Ausliefern durch den echten Origin ersetzt – Sitemap-loc muss absolut sein.
+    body: `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>__ORIGIN__/sm-start</loc></url>
+  <url><loc>__ORIGIN__/sm-verwaist</loc></url>
+</urlset>`,
+  },
+  '/sm-start': {
+    body: page({
+      title: 'Sitemap-Test Startseite mit ausreichend langem Titel',
+      desc: DESC,
+      h1: ['SM'],
+      links: ['/sm-verlinkt'],
+      head: '<link rel="canonical" href="/sm-start">',
+    }),
+  },
+  '/sm-verlinkt': {
+    body: page({
+      title: 'Verlinkt, aber nicht in der Sitemap',
+      desc: DESC,
+      h1: ['Verlinkt'],
+      links: ['/sm-start'],
+      head: '<link rel="canonical" href="/sm-verlinkt">',
+    }),
+  },
+  '/sm-verwaist': {
+    body: page({
+      title: 'In der Sitemap, aber unverlinkt',
+      desc: DESC,
+      h1: ['Verwaist'],
+      head: '<link rel="canonical" href="/sm-verwaist">',
+    }),
+  },
   '/js': {
     body: page({
       title: 'Lädt…',
@@ -119,12 +155,13 @@ export async function startFixture(): Promise<{ origin: string; close(): Promise
       return;
     }
     res.writeHead(f.status ?? 200, { 'content-type': `${f.type ?? 'text/html'}; charset=utf-8`, ...f.headers });
-    res.end(f.body ?? '');
+    res.end((f.body ?? '').replaceAll('__ORIGIN__', origin));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
+  const origin = `http://127.0.0.1:${port}`;
   return {
-    origin: `http://127.0.0.1:${port}`,
+    origin,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

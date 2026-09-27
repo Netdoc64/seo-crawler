@@ -2,6 +2,8 @@ export interface QueueItem {
   url: string;
   depth: number;
   foundOn: string | null;
+  /** Nur bei Start-URLs: woher sie kamen. */
+  seedSource?: 'url' | 'file' | 'sitemap';
 }
 
 /** Warteschlange mit Duplikatschutz; `next()` liefert null, sobald nichts mehr kommt und niemand mehr arbeitet. */

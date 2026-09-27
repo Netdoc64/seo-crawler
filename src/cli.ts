@@ -103,7 +103,11 @@ async function cmdCrawl(args: string[]): Promise<number> {
   try {
     const { baseDir: _baseDir, ...storedConfig } = config;
     const runId = store.startRun(config.name, storedConfig);
+    let sitemapUrls: Set<string> | null = null;
     const pages = await crawl(config, {
+      onSeeds(info) {
+        sitemapUrls = info.sitemapUrls.size > 0 ? info.sitemapUrls : null;
+      },
       onPage(p, { done, queued }) {
         store.savePage(runId, p);
         if (values.quiet) return;
@@ -116,7 +120,7 @@ async function cmdCrawl(args: string[]): Promise<number> {
       onWarn: (m) => console.error(`Warnung: ${m}`),
     });
 
-    const findings = runRules(pages, rules);
+    const findings = runRules(pages, rules, { sitemapUrls, followLinks: config.scope.followLinks });
     store.finishRun(runId, pages.length, findings);
 
     const summary = summarize(runId, config.name, pages, findings);
