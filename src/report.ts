@@ -12,6 +12,8 @@ export interface Summary {
   name: string;
   pages: number;
   rendered: number;
+  /** Extern geprüfte Link-Ziele (keine gecrawlten Seiten). */
+  external: number;
   byStatus: [string, number][];
   totals: Record<Severity, number>;
   rules: RuleSummary[];
@@ -24,8 +26,10 @@ function statusBucket(p: PageResult): string {
 }
 
 export function summarize(runId: number, name: string, pages: PageResult[], findings: Finding[]): Summary {
+  // Externe Link-Ziele sind keine gecrawlten Seiten – eigene Zahl, nicht in den Seitenzählern.
+  const internal = pages.filter((p) => !p.external);
   const byStatus = new Map<string, number>();
-  for (const p of pages) byStatus.set(statusBucket(p), (byStatus.get(statusBucket(p)) ?? 0) + 1);
+  for (const p of internal) byStatus.set(statusBucket(p), (byStatus.get(statusBucket(p)) ?? 0) + 1);
 
   const byRule = new Map<string, RuleSummary>();
   const totals: Record<Severity, number> = { error: 0, warning: 0, info: 0 };
@@ -42,8 +46,9 @@ export function summarize(runId: number, name: string, pages: PageResult[], find
   return {
     runId,
     name,
-    pages: pages.length,
-    rendered: pages.filter((p) => p.rendered).length,
+    pages: internal.length,
+    rendered: internal.filter((p) => p.rendered).length,
+    external: pages.length - internal.length,
     byStatus: [...byStatus.entries()].sort(),
     totals,
     rules,
@@ -58,7 +63,10 @@ function pad(s: string, n: number) {
 
 export function formatConsole(s: Summary, examples = 3): string {
   const lines: string[] = [];
-  lines.push(`Lauf #${s.runId} „${s.name}“: ${s.pages} Seiten, davon ${s.rendered} gerendert`);
+  lines.push(
+    `Lauf #${s.runId} „${s.name}“: ${s.pages} Seiten, davon ${s.rendered} gerendert` +
+      (s.external ? ` · ${s.external} extern geprüft` : ''),
+  );
   lines.push(`Status: ${s.byStatus.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
   lines.push(`Befunde: ${s.totals.error} Fehler · ${s.totals.warning} Warnungen · ${s.totals.info} Hinweise`);
   if (s.rules.length === 0) return lines.join('\n');
@@ -78,7 +86,11 @@ export function formatMarkdown(s: Summary, maxPerRule = 50): string {
   const lines: string[] = [];
   lines.push(`## SEO-Crawl „${md(s.name)}“ (Lauf #${s.runId})`);
   lines.push('');
-  lines.push(`${s.pages} Seiten, davon ${s.rendered} gerendert · Status: ${s.byStatus.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
+  lines.push(
+    `${s.pages} Seiten, davon ${s.rendered} gerendert` +
+      (s.external ? ` · ${s.external} extern geprüft` : '') +
+      ` · Status: ${s.byStatus.map(([k, v]) => `${k} ${v}`).join(' · ')}`,
+  );
   lines.push('');
   lines.push('| Schwere | Anzahl |');
   lines.push('|---|---|');

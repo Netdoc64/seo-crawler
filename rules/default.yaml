@@ -180,3 +180,15 @@ rules:
     scope: site
     severity: info
     check: { missingFromSitemap: true }
+
+  - id: broken-external-link
+    description: Externer Link auf eine Fehlerseite (nur mit scope.checkExternal)
+    scope: site
+    severity: warning
+    check: { brokenLinks: external }
+
+  - id: external-link-blocked
+    description: Externer Link weist Bots mit 403 ab – nicht kaputt, aber nicht prüfbar
+    scope: site
+    severity: info
+    check: { blockedLinks: external }

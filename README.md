@@ -95,6 +95,11 @@ entfällt bei `followLinks: false`) und `missingFromSitemap: true` (indexierbare
 nur aktiv, wenn mindestens eine Sitemap konfiguriert ist). Start-URLs merken sich ihre Herkunft
 (`url` schlägt `file` schlägt `sitemap`); www und nackte Domain gelten als dieselbe Site, die URLs selbst
 werden exakt (nach `normalizeUrl`) verglichen.
+`brokenLinks: external` und `blockedLinks: external` brauchen `scope.checkExternal: true`: Nach dem Crawl wird jedes
+eindeutige externe Link-Ziel einmal geprüft (erst `HEAD`, bei 405/501/Netzfehler einmal `GET`, bei 429 mit `Retry-After`
+bis 30 s einmal wiederholt; höchstens `scope.maxExternal`, Standard 500). Fremde Seiten werden dabei weder gerendert
+noch nach Links durchsucht, ihre robots.txt wird nicht gelesen. 403 zählt nicht als kaputt, sondern als „blockiert“ –
+viele Plattformen weisen Bots so ab.
 
 ### Plugins
 

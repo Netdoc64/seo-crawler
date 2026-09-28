@@ -19,6 +19,8 @@ scope:
   maxDepth: 3
   maxPages: 1000               # gilt für gefundene Links, Start-URLs werden immer gescannt
   followLinks: true            # false = Bulk-Modus: nur die Startliste
+  checkExternal: false         # true = externe Link-Ziele nach dem Crawl auf Erreichbarkeit prüfen
+  maxExternal: 500
 
 render:
   mode: auto                   # raw | render | auto

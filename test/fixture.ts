@@ -6,11 +6,15 @@ interface Fixture {
   type?: string;
   headers?: Record<string, string>;
   body?: string;
+  /** Abweichender Status für HEAD (z. B. 405 – Server verweigert HEAD). */
+  headStatus?: number;
+  /** Antwort nur beim ersten Abruf dieses Pfads (z. B. einmal 429, dann normal). */
+  once?: { status: number; headers?: Record<string, string>; body?: string };
 }
 
 const LOREM = 'Frische Blumen werden täglich gebunden und schnell geliefert. '.repeat(30);
 
-function page(o: { title: string; desc?: string; h1?: string[]; links?: string[]; head?: string; body?: string }): string {
+export function page(o: { title: string; desc?: string; h1?: string[]; links?: string[]; head?: string; body?: string }): string {
   return `<!doctype html><html lang="de"><head><title>${o.title}</title>
 ${o.desc ? `<meta name="description" content="${o.desc}">` : ''}${o.head ?? ''}</head><body>
 ${(o.h1 ?? []).map((h) => `<h1>${h}</h1>`).join('')}
@@ -146,22 +150,37 @@ const PAGES: Record<string, Fixture> = {
   },
 };
 
-export async function startFixture(): Promise<{ origin: string; close(): Promise<void> }> {
+export async function startFixture(
+  extra: Record<string, Fixture> = {},
+): Promise<{ origin: string; hits: string[]; close(): Promise<void> }> {
+  const pages: Record<string, Fixture> = { ...PAGES, ...extra };
+  const hits: string[] = [];
+  const onceUsed = new Set<string>();
   const server = http.createServer((req, res) => {
-    const f = PAGES[(req.url ?? '/').split('?')[0]!];
+    const path = (req.url ?? '/').split('?')[0]!;
+    hits.push(`${req.method} ${path}`);
+    const f = pages[path];
     if (!f) {
       res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
       res.end(page({ title: 'Nicht gefunden', h1: ['404'] }));
       return;
     }
-    res.writeHead(f.status ?? 200, { 'content-type': `${f.type ?? 'text/html'}; charset=utf-8`, ...f.headers });
-    res.end((f.body ?? '').replaceAll('__ORIGIN__', origin));
+    if (f.once && !onceUsed.has(path)) {
+      onceUsed.add(path);
+      res.writeHead(f.once.status, { 'content-type': 'text/html; charset=utf-8', ...f.once.headers });
+      res.end(f.once.body ?? '');
+      return;
+    }
+    const status = req.method === 'HEAD' && f.headStatus !== undefined ? f.headStatus : (f.status ?? 200);
+    res.writeHead(status, { 'content-type': `${f.type ?? 'text/html'}; charset=utf-8`, ...f.headers });
+    res.end(req.method === 'HEAD' ? '' : (f.body ?? '').replaceAll('__ORIGIN__', origin));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
   const origin = `http://127.0.0.1:${port}`;
   return {
     origin,
+    hits,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
