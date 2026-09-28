@@ -55,6 +55,15 @@ export class HostLimiter {
     h.delayMs = Math.max(h.delayMs, ms);
   }
 
+  /** Frühester Zeitpunkt, zu dem `run` für diesen Host ohne Warten auf den Mindestabstand starten würde. */
+  nextStart(host: string): number {
+    return this.#hosts.get(host)?.next ?? 0;
+  }
+
+  delayMs(host: string): number {
+    return this.#hosts.get(host)?.delayMs ?? this.#delayMs;
+  }
+
   run<T>(host: string, fn: () => Promise<T>): Promise<T> {
     const h = this.#get(host);
     return h.slots.use(async () => {

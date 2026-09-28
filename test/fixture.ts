@@ -10,6 +10,8 @@ interface Fixture {
   headStatus?: number;
   /** Antwort nur beim ersten Abruf dieses Pfads (z. B. einmal 429, dann normal). */
   once?: { status: number; headers?: Record<string, string>; body?: string };
+  /** Antwort erst nach dieser Wartezeit (langsamer Server). */
+  delayMs?: number;
 }
 
 const LOREM = 'Frische Blumen werden täglich gebunden und schnell geliefert. '.repeat(30);
@@ -156,10 +158,11 @@ export async function startFixture(
   const pages: Record<string, Fixture> = { ...PAGES, ...extra };
   const hits: string[] = [];
   const onceUsed = new Set<string>();
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const path = (req.url ?? '/').split('?')[0]!;
     hits.push(`${req.method} ${path}`);
     const f = pages[path];
+    if (f?.delayMs) await new Promise((resolve) => setTimeout(resolve, f.delayMs));
     if (!f) {
       res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
       res.end(page({ title: 'Nicht gefunden', h1: ['404'] }));

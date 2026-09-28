@@ -22,7 +22,7 @@ Ohne Browser: `--mode raw`. Nur eine URL-Liste prüfen, ohne Links zu folgen: `-
 | Abruf | folgt Weiterleitungen selbst und hält jede Stufe fest; Header, Antwortzeit, Größe |
 | Rendern | Chromium über Playwright. `auto` rendert nur, wenn das rohe HTML nach JS-App aussieht; `render` immer; `raw` nie |
 | Roh vs. gerendert | beide Fassungen werden gespeichert; Regeln mit `stableAcrossRender` melden, was erst durch JavaScript entsteht |
-| Höflichkeit | robots.txt samt Crawl-delay, Parallelität pro Host, Mindestabstand |
+| Höflichkeit | robots.txt samt Crawl-delay, Parallelität pro Host, Mindestabstand; im Bulk-Modus reihum über die Hosts, damit ein langsamer Host die übrigen nicht aufhält |
 | Umfang | Start über URLs, URL-Datei oder Sitemap (auch Index und .gz); Host-, Pfad- und Tiefenfilter |
 | Speicher | jeder Lauf als Snapshot in SQLite (`node:sqlite`) |
 | Nachverfolgung | `diff` zeigt neue/verschwundene Seiten, geänderte Felder, neue und behobene Befunde |
