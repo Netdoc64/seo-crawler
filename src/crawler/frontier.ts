@@ -15,6 +15,7 @@ export class Frontier {
   #limit: number;
   #active = 0;
   #waiters: (() => void)[] = [];
+  #closed = false;
 
   constructor(limit: number) {
     this.#limit = limit;
@@ -42,8 +43,15 @@ export class Frontier {
     return true;
   }
 
+  /** Abbruch: ab jetzt liefert `next()` nur noch null, auch an schon wartende Worker. */
+  close(): void {
+    this.#closed = true;
+    this.#wake();
+  }
+
   async next(): Promise<QueueItem | null> {
     for (;;) {
+      if (this.#closed) return null;
       if (this.#head < this.#items.length) {
         const item = this.#items[this.#head++]!;
         if (this.#head > 4096 && this.#head * 2 > this.#items.length) {
