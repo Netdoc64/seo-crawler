@@ -6,6 +6,10 @@ export interface FetchOptions {
   timeoutMs: number;
   maxRedirects?: number;
   accept?: string;
+  /** Standard GET; HEAD für reine Erreichbarkeitsprüfungen. */
+  method?: 'GET' | 'HEAD';
+  /** false = Body nie lesen (Status genügt, z. B. externe Links). */
+  readBody?: boolean;
 }
 
 export interface FetchResult {
@@ -50,6 +54,7 @@ export async function fetchPage(url: string, opts: FetchOptions): Promise<FetchR
       visited.add(current);
       const res = await fetch(current, {
         redirect: 'manual',
+        method: opts.method ?? 'GET',
         headers: {
           'user-agent': opts.userAgent,
           accept: opts.accept ?? 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
@@ -70,7 +75,11 @@ export async function fetchPage(url: string, opts: FetchOptions): Promise<FetchR
       const contentType = res.headers.get('content-type');
       let body: string | null = null;
       let bytes = 0;
-      if (contentType && TEXTUAL.test(contentType)) {
+      if (opts.method === 'HEAD' || opts.readBody === false) {
+        const len = Number(res.headers.get('content-length'));
+        bytes = Number.isFinite(len) ? len : 0;
+        await res.body?.cancel();
+      } else if (contentType && TEXTUAL.test(contentType)) {
         body = await res.text();
         bytes = Buffer.byteLength(body);
       } else {

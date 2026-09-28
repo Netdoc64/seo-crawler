@@ -28,6 +28,10 @@ export const ConfigSchema = z
         /** Gilt für gefundene Links; Start-URLs werden immer gescannt. */
         maxPages: z.number().int().min(1).default(1000),
         followLinks: z.boolean().default(true),
+        /** Nach dem Crawl externe Link-Ziele auf Erreichbarkeit prüfen. */
+        checkExternal: z.boolean().default(false),
+        /** Höchstens so viele eindeutige externe Ziele prüfen. */
+        maxExternal: z.number().int().min(1).default(500),
       })
       .strict()
       .prefault({}),

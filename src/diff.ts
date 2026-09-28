@@ -22,8 +22,9 @@ export interface RunDiff {
 const key = (f: Finding) => `${f.ruleId}\u0000${f.url}`;
 
 export function diffRuns(before: PageResult[], after: PageResult[], fBefore: Finding[], fAfter: Finding[]): RunDiff {
-  const a = new Map(before.map((p) => [p.url, p]));
-  const b = new Map(after.map((p) => [p.url, p]));
+  // Extern geprüfte Link-Ziele sind keine Seiten des Laufs.
+  const a = new Map(before.filter((p) => !p.external).map((p) => [p.url, p]));
+  const b = new Map(after.filter((p) => !p.external).map((p) => [p.url, p]));
   const changes: Change[] = [];
   for (const [url, pb] of b) {
     const pa = a.get(url);

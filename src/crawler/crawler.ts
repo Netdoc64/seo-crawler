@@ -4,6 +4,7 @@ import { extract, needsRender } from '../extract.ts';
 import type { PageResult } from '../types.ts';
 import { globToRegExp, isHtml, normalizeUrl, siteKey } from '../url.ts';
 import { errMsg, HostLimiter, Semaphore } from '../util.ts';
+import { checkExternalLinks } from './external.ts';
 import { fetchPage } from './fetcher.ts';
 import { Frontier, type QueueItem } from './frontier.ts';
 import { Renderer } from './renderer.ts';
@@ -190,6 +191,32 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
     await Promise.all(Array.from({ length: pol.concurrency }, () => worker()));
   } finally {
     await renderer?.close();
+  }
+
+  // Externe Link-Ziele erst nach dem Crawl prüfen, jedes eindeutige Ziel genau einmal.
+  if (config.scope.checkExternal) {
+    const targets = new Set<string>();
+    for (const p of results) {
+      for (const link of (p.rendered ?? p.raw)?.links ?? []) {
+        if (!link.internal) targets.add(link.href);
+      }
+    }
+    let urls = [...targets];
+    if (urls.length > config.scope.maxExternal) {
+      const skipped = urls.splice(config.scope.maxExternal);
+      const preview = skipped.slice(0, 5).join(', ');
+      warn(`maxExternal ${config.scope.maxExternal} erreicht – nicht geprüft: ${preview}${skipped.length > 5 ? ` (+${skipped.length - 5} weitere)` : ''}`);
+    }
+    const externalPages = await checkExternalLinks(urls, {
+      userAgent: pol.userAgent,
+      timeoutMs: pol.timeoutMs,
+      perHost: pol.perHost,
+      delayMs: pol.delayMs,
+    });
+    for (const ep of externalPages) {
+      results.push(ep);
+      hooks.onPage?.(ep, { done: results.length, queued: 0 });
+    }
   }
   return results;
 }

@@ -88,7 +88,8 @@ export const PageRuleSchema = z
 
 export const SiteCheckSchema = z.union([
   z.object({ unique: z.string() }).strict(),
-  z.object({ brokenLinks: z.literal('internal') }).strict(),
+  z.object({ brokenLinks: z.enum(['internal', 'external']) }).strict(),
+  z.object({ blockedLinks: z.literal('external') }).strict(),
   z.object({ redirectingLinks: z.literal('internal') }).strict(),
   z.object({ canonicalTarget: z.literal('ok') }).strict(),
   // valid = volle Prüfung; x-default = nur der Hinweis, dass x-default fehlt (eigene Regel, separat abschaltbar).

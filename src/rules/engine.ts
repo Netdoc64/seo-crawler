@@ -118,6 +118,8 @@ export function evalCheck(check: Check, ctx: EvalContext, inherited?: string): s
 
 function appliesTo(a: Applies | undefined, p: PageResult, fields: Fields): boolean {
   if (p.robotsBlocked) return false;
+  // Extern geprüfte Link-Ziele haben keinen Inhalt und werden nie bewertet.
+  if (p.external) return false;
   const html = a?.html ?? true;
   if (html && !(p.rendered ?? p.raw)) return false;
   if (html && !isHtml(p.contentType)) return false;
@@ -284,14 +286,22 @@ function runSiteRule(rule: SiteRule, pages: PageResult[], site: SiteContext): Fi
   for (const { p } of sources) {
     const seen = new Set<string>();
     for (const link of (p.rendered ?? p.raw)?.links ?? []) {
-      if (!link.internal || seen.has(link.href)) continue;
+      if (seen.has(link.href)) continue;
       seen.add(link.href);
       const target = byUrl.get(link.href);
       if (!target || target.robotsBlocked) continue;
-      if ('brokenLinks' in check && (target.status === 0 || target.status >= 400)) {
+      const broken = target.status === 0 || target.status >= 400;
+      // 403 heißt bei fremden Hosts meist Bot-Abwehr, nicht „kaputt“ – eigene Regel blockedLinks.
+      if ('brokenLinks' in check && check.brokenLinks === 'external' && !link.internal && broken && target.status !== 403) {
+        add(p.url, `Externer Link auf ${link.href} → ${target.status || target.error}`);
+      }
+      if ('brokenLinks' in check && check.brokenLinks === 'internal' && link.internal && broken) {
         add(p.url, `Link auf ${link.href} → ${target.status || target.error}`);
       }
-      if ('redirectingLinks' in check && target.redirects.length > 0 && link.href !== target.finalUrl) {
+      if ('blockedLinks' in check && !link.internal && target.status === 403) {
+        add(p.url, `Externer Link auf ${link.href} weist Bots ab (403)`);
+      }
+      if ('redirectingLinks' in check && link.internal && target.redirects.length > 0 && link.href !== target.finalUrl) {
         add(p.url, `Link auf ${link.href} leitet weiter nach ${target.finalUrl}`);
       }
     }
