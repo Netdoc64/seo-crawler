@@ -134,9 +134,8 @@ async function cmdCrawl(args: string[]): Promise<number> {
     const findings = runRules(pages, rules, { sitemapUrls, followLinks: config.scope.followLinks });
     store.finishRun(runId, pages.length, findings, aborted);
 
-    const summary = summarize(runId, config.name, pages, findings);
+    const summary = summarize(runId, config.name, pages, findings, aborted);
     console.log(`\n${formatConsole(summary)}`);
-    if (aborted) console.log(`Lauf abgebrochen nach ${pages.length} Seiten – Ergebnis unvollständig.`);
     await writeOutputs(values.md, values.json, formatMarkdown(summary), { summary: { ...summary, rules: undefined }, findings });
     if (values.sarif) {
       const ruleInfos = [...rules.page, ...rules.site, ...rules.plugins];
@@ -212,9 +211,8 @@ async function cmdReport(args: string[]): Promise<number> {
     if (!run) throw new Error('Lauf nicht gefunden.');
     const findings = store.loadFindings(run.id);
     const pages = store.loadPages(run.id);
-    const summary = summarize(run.id, run.name, pages, findings);
+    const summary = summarize(run.id, run.name, pages, findings, run.aborted);
     console.log(formatConsole(summary, 10));
-    if (run.aborted) console.log(`Lauf abgebrochen nach ${run.pages} Seiten – Ergebnis unvollständig.`);
     await writeOutputs(values.md, values.json, formatMarkdown(summary), { summary: { ...summary, rules: undefined }, findings });
     // Die Regeln sind hier evtl. nicht mehr geladen – dann eben ohne Beschreibung.
     if (values.html) await writeFile(values.html, formatHtml({ summary, pages, generatedAt: new Date().toISOString() }));
@@ -241,10 +239,15 @@ async function cmdDiff(args: string[]): Promise<number> {
       to = pair[0]!.id;
       from = pair[1]!.id;
     }
-    for (const id of [from, to]) if (!store.getRun(id)) throw new Error(`Lauf #${id} nicht gefunden.`);
+    const aborted: number[] = [];
+    for (const id of [from, to]) {
+      const run = store.getRun(id);
+      if (!run) throw new Error(`Lauf #${id} nicht gefunden.`);
+      if (run.aborted) aborted.push(id);
+    }
     const d = diffRuns(store.loadPages(from), store.loadPages(to), store.loadFindings(from), store.loadFindings(to));
-    console.log(formatDiff(d, from, to));
-    const md = formatDiff(d, from, to, true);
+    console.log(formatDiff(d, from, to, false, aborted));
+    const md = formatDiff(d, from, to, true, aborted);
     if (values.md) await writeFile(values.md, md);
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, md);
     return 0;

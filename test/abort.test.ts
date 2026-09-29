@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,6 +8,9 @@ import { test } from 'node:test';
 import { chromium } from 'playwright';
 import { parseConfig } from '../src/config.ts';
 import { crawl } from '../src/crawler/crawler.ts';
+import { diffRuns, formatDiff } from '../src/diff.ts';
+import { formatConsole, formatMarkdown, summarize } from '../src/report.ts';
+import { formatHtml } from '../src/report-html.ts';
 import { Store } from '../src/store/db.ts';
 import { page, startFixture } from './fixture.ts';
 
@@ -112,6 +115,62 @@ test('Abbruch, während Chromium noch startet', async (t) => {
   assert.ok(!fx.hits.includes('GET /'), 'nach dem Abbruch keine Seite mehr abgerufen');
 });
 
+test('Abbruch während der Externprüfung: laufende Prüfung endet, wartende fallen weg', async (t) => {
+  const paths = ['/e1', '/e2', '/e3', '/e4'];
+  const foreign = await startFixture(Object.fromEntries(paths.map((p) => [p, { delayMs: 2000, body: page({ title: p, h1: [p] }) }])));
+  t.after(() => foreign.close());
+  // Fremder Host über localhost, damit er nicht zum Scope gehört (siehe external.test.ts).
+  const targets = paths.map((p) => foreign.origin.replace('127.0.0.1', 'localhost') + p);
+  const fx = await startFixture({ '/ext-langsam': { body: page({ title: 'Externe Ziele', h1: ['x'], links: targets }) } });
+  t.after(() => fx.close());
+
+  const ac = new AbortController();
+  const warnings: string[] = [];
+  const started = Date.now();
+  const pages = await crawl(
+    config({
+      start: { urls: [`${fx.origin}/ext-langsam`] },
+      scope: { followLinks: false, checkExternal: true },
+      politeness: { perHost: 1 },
+    }),
+    {
+      signal: ac.signal,
+      // Die einzige Seite ist fertig – der Abbruch trifft die Externprüfung, die gleich danach beginnt.
+      onPage: (p) => {
+        if (!p.external) setTimeout(() => ac.abort(), 300);
+      },
+      onWarn: (m) => warnings.push(m),
+    },
+  );
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed < 3000, `dauerte ${elapsed} ms`);
+  const external = pages.filter((p) => p.external);
+  assert.equal(external.length, 1, 'nur die bereits laufende Prüfung kommt zurück');
+  assert.equal(external[0]!.status, 200);
+  assert.equal(foreign.hits.length, 1, 'nach dem Abbruch keine weitere Prüfung gestartet');
+  assert.deepEqual(warnings, []);
+});
+
+test('Berichte und diff kennzeichnen einen abgebrochenen Lauf', () => {
+  const summary = summarize(7, 'teil', [], [], true);
+  assert.equal(summary.aborted, true);
+  const note = /Lauf abgebrochen nach 0 Seiten – Ergebnis unvollständig/;
+  assert.match(formatConsole(summary), note);
+  assert.match(formatMarkdown(summary), note);
+  assert.match(formatHtml({ summary, pages: [], generatedAt: '2026-09-29T00:00:00.000Z' }), note);
+  // --json schreibt die Zusammenfassung ohne rules – das Feld muss dabei sein.
+  assert.equal(JSON.parse(JSON.stringify({ ...summary, rules: undefined })).aborted, true);
+
+  const complete = summarize(8, 'voll', [], []);
+  assert.equal(complete.aborted, false);
+  assert.doesNotMatch(formatMarkdown(complete), /abgebrochen/);
+
+  const d = diffRuns([], [], [], []);
+  assert.match(formatDiff(d, 7, 8, false, [7]), /Lauf #7 wurde abgebrochen/);
+  assert.match(formatDiff(d, 7, 8, true, [7]), /> \*\*Lauf #7 wurde abgebrochen/);
+  assert.doesNotMatch(formatDiff(d, 7, 8), /abgebrochen/);
+});
+
 test('alte DB ohne Spalte aborted wird beim Öffnen migriert und bleibt lesbar', (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'seo-crawler-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -165,10 +224,11 @@ test('CLI: Strg+C speichert Seiten und Befunde, runs zeigt „abgebrochen nach N
   const dir = mkdtempSync(path.join(tmpdir(), 'seo-crawler-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const db = path.join(dir, 'runs.sqlite');
+  const json = path.join(dir, 'befunde.json');
 
   let sent = false;
   const { done } = runCli(
-    ['crawl', `${fx.origin}/b`, ...SLOW_PATHS.map((p) => fx.origin + p), '--no-follow', '--mode', 'raw', '--db', db],
+    ['crawl', `${fx.origin}/b`, ...SLOW_PATHS.map((p) => fx.origin + p), '--no-follow', '--mode', 'raw', '--db', db, '--json', json],
     (text, child) => {
       if (!sent && text.includes('[1/')) {
         sent = true;
@@ -192,6 +252,8 @@ test('CLI: Strg+C speichert Seiten und Befunde, runs zeigt „abgebrochen nach N
   } finally {
     store.close();
   }
+  assert.equal(JSON.parse(readFileSync(json, 'utf8')).summary.aborted, true, '--json kennzeichnet den Abbruch');
+  assert.match(res.stdout, /Lauf abgebrochen nach \d+ Seiten/);
   const runs = await runCli(['runs', '--db', db]).done;
   assert.match(runs.stdout, /abgebrochen nach \d+ Seiten/);
 });
