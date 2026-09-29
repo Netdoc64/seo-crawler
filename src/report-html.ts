@@ -1,5 +1,5 @@
 import type { PageResult, Severity } from './types.ts';
-import type { Summary } from './report.ts';
+import { abortedNote, type Summary } from './report.ts';
 
 export interface HtmlReportData {
   summary: Summary;
@@ -41,6 +41,7 @@ input[type=search] { padding: 0.3rem; min-width: 16rem; }
 tr.hidden { display: none; }
 details { margin: 0.4rem 0; }
 .empty { padding: 2rem; text-align: center; border: 1px dashed; border-radius: 0.5rem; }
+.abbruch { padding: 0.5rem 0.75rem; border-left: 4px solid #d97706; }
 `;
 
 // Filter und Sortierung laufen komplett im Browser; ohne JS bleibt alles sichtbar.
@@ -154,7 +155,7 @@ ${findingRows(s)}
 </head>
 <body>
 <h1>SEO-Bericht „${esc(s.name)}“ <small>Lauf #${s.runId}</small></h1>
-<p>Erstellt ${esc(data.generatedAt)} · ${s.pages} Seiten, davon ${s.rendered} gerendert ·
+${s.aborted ? `<p class="abbruch"><strong>${esc(abortedNote(s))}</strong></p>\n` : ''}<p>Erstellt ${esc(data.generatedAt)} · ${s.pages} Seiten, davon ${s.rendered} gerendert ·
 Status: ${s.byStatus.map(([k, v]) => `${esc(k)} ${v}`).join(' · ')}</p>
 <div class="cards">
 <div class="card sev-error"><b>${s.totals.error}</b>Fehler</div>

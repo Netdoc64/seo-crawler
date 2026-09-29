@@ -99,12 +99,22 @@ async function cmdCrawl(args: string[]): Promise<number> {
   // Regeln zuerst laden: ein Tippfehler in einer Regel soll nicht erst nach dem Crawl auffallen.
   const rules = await loadRules(config);
 
+  // Erstes Strg+C: keine neuen Seiten mehr, Bisheriges auswerten und speichern. Zweites: sofort raus.
+  const abort = new AbortController();
+  const onSigint = () => {
+    if (abort.signal.aborted) process.exit(130);
+    console.error('\nAbbruch – werte bisherige Seiten aus … (erneut Strg+C beendet sofort)');
+    abort.abort();
+  };
+  process.on('SIGINT', onSigint);
+
   const store = new Store(config.output.db);
   try {
     const { baseDir: _baseDir, ...storedConfig } = config;
     const runId = store.startRun(config.name, storedConfig);
     let sitemapUrls: Set<string> | null = null;
     const pages = await crawl(config, {
+      signal: abort.signal,
       onSeeds(info) {
         sitemapUrls = info.sitemapUrls.size > 0 ? info.sitemapUrls : null;
       },
@@ -120,16 +130,18 @@ async function cmdCrawl(args: string[]): Promise<number> {
       onWarn: (m) => console.error(`Warnung: ${m}`),
     });
 
+    const aborted = abort.signal.aborted;
     const findings = runRules(pages, rules, { sitemapUrls, followLinks: config.scope.followLinks });
-    store.finishRun(runId, pages.length, findings);
+    store.finishRun(runId, pages.length, findings, aborted);
 
-    const summary = summarize(runId, config.name, pages, findings);
+    const summary = summarize(runId, config.name, pages, findings, aborted);
     console.log(`\n${formatConsole(summary)}`);
     await writeOutputs(values.md, values.json, formatMarkdown(summary), { summary: { ...summary, rules: undefined }, findings });
     if (values.sarif) {
       const ruleInfos = [...rules.page, ...rules.site, ...rules.plugins];
       const configPath = path.relative(process.cwd(), path.resolve(values.config!)) || path.basename(values.config!);
-     
+      await writeFile(values.sarif, formatSarif(findings, ruleInfos, configPath));
+    }
     if (values.html) {
       const descriptions = Object.fromEntries(
         [...rules.page, ...rules.site, ...rules.plugins].map((r) => [r.id, r.description ?? '']),
@@ -138,12 +150,12 @@ async function cmdCrawl(args: string[]): Promise<number> {
         values.html,
         formatHtml({ summary, pages, descriptions, generatedAt: new Date().toISOString() }),
       );
-    } await writeFile(values.sarif, formatSarif(findings, ruleInfos, configPath));
     }
     if (process.env.GITHUB_ACTIONS === 'true') for (const line of githubAnnotations(findings)) console.log(line);
     console.error(`\nGespeichert als Lauf #${runId} in ${config.output.db}`);
     return exceeds(findings, failOn) ? 1 : 0;
   } finally {
+    process.off('SIGINT', onSigint);
     store.close();
   }
 }
@@ -179,7 +191,11 @@ async function cmdRuns(args: string[]): Promise<number> {
     for (const r of runs) {
       console.log(
         `#${String(r.id).padEnd(4)} ${r.startedAt.replace('T', ' ').slice(0, 19)}  ${r.name.padEnd(20)} ` +
-          (r.finishedAt ? `${r.pages} Seiten, ${r.findings} Befunde` : 'abgebrochen'),
+          (r.aborted
+            ? `abgebrochen nach ${r.pages} Seiten, ${r.findings} Befunde`
+            : r.finishedAt
+              ? `${r.pages} Seiten, ${r.findings} Befunde`
+              : 'nicht abgeschlossen'),
       );
     }
     return 0;
@@ -195,7 +211,7 @@ async function cmdReport(args: string[]): Promise<number> {
     if (!run) throw new Error('Lauf nicht gefunden.');
     const findings = store.loadFindings(run.id);
     const pages = store.loadPages(run.id);
-    const summary = summarize(run.id, run.name, pages, findings);
+    const summary = summarize(run.id, run.name, pages, findings, run.aborted);
     console.log(formatConsole(summary, 10));
     await writeOutputs(values.md, values.json, formatMarkdown(summary), { summary: { ...summary, rules: undefined }, findings });
     // Die Regeln sind hier evtl. nicht mehr geladen – dann eben ohne Beschreibung.
@@ -215,16 +231,23 @@ async function cmdDiff(args: string[]): Promise<number> {
       from = Number(positionals[0]);
       to = Number(positionals[1]);
     } else {
-      const latest = store.listRuns().find((r) => r.finishedAt);
-      const pair = latest ? store.listRuns(latest.name).filter((r) => r.finishedAt) : [];
-      if (pair.length < 2) throw new Error('Für den Vergleich braucht es zwei abgeschlossene Läufe mit gleichem Namen – oder zwei Lauf-Nummern.');
+      // Abgebrochene Läufe sind unvollständig – als Vergleichsbasis taugen sie nur, wenn man sie ausdrücklich nennt.
+      const complete = (r: { finishedAt: string | null; aborted: boolean }) => r.finishedAt !== null && !r.aborted;
+      const latest = store.listRuns().find(complete);
+      const pair = latest ? store.listRuns(latest.name).filter(complete) : [];
+      if (pair.length < 2) throw new Error('Für den Vergleich braucht es zwei vollständige Läufe mit gleichem Namen – oder zwei Lauf-Nummern.');
       to = pair[0]!.id;
       from = pair[1]!.id;
     }
-    for (const id of [from, to]) if (!store.getRun(id)) throw new Error(`Lauf #${id} nicht gefunden.`);
+    const aborted: number[] = [];
+    for (const id of [from, to]) {
+      const run = store.getRun(id);
+      if (!run) throw new Error(`Lauf #${id} nicht gefunden.`);
+      if (run.aborted) aborted.push(id);
+    }
     const d = diffRuns(store.loadPages(from), store.loadPages(to), store.loadFindings(from), store.loadFindings(to));
-    console.log(formatDiff(d, from, to));
-    const md = formatDiff(d, from, to, true);
+    console.log(formatDiff(d, from, to, false, aborted));
+    const md = formatDiff(d, from, to, true, aborted);
     if (values.md) await writeFile(values.md, md);
     if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, md);
     return 0;

@@ -52,6 +52,7 @@ export class Frontier {
   #waiters: (() => void)[] = [];
   #timer: ReturnType<typeof setTimeout> | undefined;
   #timerAt = Infinity;
+  #closed = false;
 
   constructor(limit: number, pacing: HostPacing | null = null) {
     this.#limit = limit;
@@ -88,8 +89,17 @@ export class Frontier {
     return true;
   }
 
+  /** Abbruch: ab jetzt liefert `next()` nur noch null, auch an schon wartende Worker. */
+  close(): void {
+    this.#closed = true;
+    // Ein Timer für den Mindestabstand (Crawl-delay bis zu Minuten) hielte sonst den Prozess am Leben.
+    this.#stopTimer();
+    this.#wake();
+  }
+
   async next(): Promise<QueueItem | null> {
     for (;;) {
+      if (this.#closed) return null;
       let wakeAt = Infinity;
       if (this.#pending > 0) {
         const now = Date.now();

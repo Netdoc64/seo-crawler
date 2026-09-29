@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS runs (
   finished_at TEXT,
   config TEXT NOT NULL,
   pages INTEGER,
-  findings INTEGER
+  findings INTEGER,
+  aborted INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS pages (
   run_id INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -39,6 +40,8 @@ export interface RunInfo {
   finishedAt: string | null;
   pages: number | null;
   findings: number | null;
+  /** Mit Strg+C abgebrochen, bisherige Seiten sind ausgewertet. */
+  aborted: boolean;
 }
 
 /** Jeder Lauf ist ein Snapshot – Grundlage für den Vergleich zweier Läufe. */
@@ -50,6 +53,15 @@ export class Store {
     this.#db = new DatabaseSync(file);
     this.#db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
     this.#db.exec(SCHEMA);
+    this.#migrate();
+  }
+
+  /** DB-Dateien aus älteren Versionen nachziehen – CREATE TABLE IF NOT EXISTS ändert bestehende Tabellen nicht. */
+  #migrate(): void {
+    const columns = this.#db.prepare('PRAGMA table_info(runs)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'aborted')) {
+      this.#db.exec('ALTER TABLE runs ADD COLUMN aborted INTEGER NOT NULL DEFAULT 0');
+    }
   }
 
   startRun(name: string, config: unknown): number {
@@ -65,15 +77,15 @@ export class Store {
       .run(runId, p.url, p.finalUrl, p.status, p.depth, JSON.stringify(p));
   }
 
-  finishRun(runId: number, pages: number, findings: Finding[]): void {
+  finishRun(runId: number, pages: number, findings: Finding[], aborted = false): void {
     const insert = this.#db.prepare('INSERT INTO findings (run_id, rule_id, severity, url, message) VALUES (?, ?, ?, ?, ?)');
     this.#db.exec('BEGIN');
     try {
       this.#db.prepare('DELETE FROM findings WHERE run_id = ?').run(runId);
       for (const f of findings) insert.run(runId, f.ruleId, f.severity, f.url, f.message);
       this.#db
-        .prepare('UPDATE runs SET finished_at = ?, pages = ?, findings = ? WHERE id = ?')
-        .run(new Date().toISOString(), pages, findings.length, runId);
+        .prepare('UPDATE runs SET finished_at = ?, pages = ?, findings = ?, aborted = ? WHERE id = ?')
+        .run(new Date().toISOString(), pages, findings.length, aborted ? 1 : 0, runId);
       this.#db.exec('COMMIT');
     } catch (err) {
       this.#db.exec('ROLLBACK');
@@ -82,7 +94,7 @@ export class Store {
   }
 
   listRuns(name?: string): RunInfo[] {
-    const sql = `SELECT id, name, started_at, finished_at, pages, findings FROM runs ${name ? 'WHERE name = ?' : ''} ORDER BY id DESC`;
+    const sql = `SELECT id, name, started_at, finished_at, pages, findings, aborted FROM runs ${name ? 'WHERE name = ?' : ''} ORDER BY id DESC`;
     const rows = (name ? this.#db.prepare(sql).all(name) : this.#db.prepare(sql).all()) as Record<string, unknown>[];
     return rows.map((r) => ({
       id: Number(r.id),
@@ -91,6 +103,7 @@ export class Store {
       finishedAt: r.finished_at === null ? null : String(r.finished_at),
       pages: r.pages === null ? null : Number(r.pages),
       findings: r.findings === null ? null : Number(r.findings),
+      aborted: Number(r.aborted) === 1,
     }));
   }
 

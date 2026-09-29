@@ -1,4 +1,7 @@
-export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+import { setTimeout as delay } from 'node:timers/promises';
+
+/** Mit `signal` endet das Warten beim Abbruch sofort (AbortError). */
+export const sleep = (ms: number, signal?: AbortSignal): Promise<void> => delay(ms, undefined, { signal });
 
 export function errMsg(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
@@ -64,13 +67,15 @@ export class HostLimiter {
     return this.#hosts.get(host)?.delayMs ?? this.#delayMs;
   }
 
-  run<T>(host: string, fn: () => Promise<T>): Promise<T> {
+  /** Nach einem Abbruch startet `fn` nicht mehr; auch ein langes Crawl-delay endet dann sofort. */
+  run<T>(host: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const h = this.#get(host);
     return h.slots.use(async () => {
+      signal?.throwIfAborted();
       const now = Date.now();
       const start = Math.max(now, h.next);
       h.next = start + h.delayMs;
-      if (start > now) await sleep(start - now);
+      if (start > now) await sleep(start - now, signal);
       return fn();
     });
   }

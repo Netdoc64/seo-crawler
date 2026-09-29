@@ -4,7 +4,7 @@ import * as cheerio from 'cheerio';
 /** Liest Sitemaps und Sitemap-Indizes (auch .gz) und liefert die enthaltenen URLs. */
 export async function loadSitemap(
   url: string,
-  opts: { userAgent: string; timeoutMs: number; limit?: number },
+  opts: { userAgent: string; timeoutMs: number; limit?: number; signal?: AbortSignal },
 ): Promise<string[]> {
   const limit = opts.limit ?? 50000;
   const out: string[] = [];
@@ -16,9 +16,10 @@ export async function loadSitemap(
     if (seen.has(current)) continue;
     seen.add(current);
 
+    const timeout = AbortSignal.timeout(opts.timeoutMs);
     const res = await fetch(current, {
       headers: { 'user-agent': opts.userAgent },
-      signal: AbortSignal.timeout(opts.timeoutMs),
+      signal: opts.signal ? AbortSignal.any([timeout, opts.signal]) : timeout,
     });
     if (!res.ok) throw new Error(`${current}: HTTP ${res.status}`);
     let buf = Buffer.from(await res.arrayBuffer());
