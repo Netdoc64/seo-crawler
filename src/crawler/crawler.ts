@@ -75,11 +75,16 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
     return !exclude.some((r) => r.test(u.pathname));
   };
 
-  const frontier = new Frontier(config.scope.maxPages);
-  for (const seed of seeds) frontier.add({ url: seed.url, depth: 0, foundOn: null, seedSource: seed.source }, true);
-
   const robots = new RobotsCache(pol.userAgent, pol.timeoutMs);
   const limiter = new HostLimiter(pol.perHost, pol.delayMs);
+  // Die Frontier gibt nur URLs von Hosts aus, die der Limiter (fast) sofort starten ließe –
+  // so hängt kein Worker an einem belegten Host, während ein anderer frei ist.
+  const frontier = new Frontier(config.scope.maxPages, {
+    perHost: pol.perHost,
+    delayMs: (host) => limiter.delayMs(host),
+    nextStart: (host) => limiter.nextStart(host),
+  });
+  for (const seed of seeds) frontier.add({ url: seed.url, depth: 0, foundOn: null, seedSource: seed.source }, true);
   const renderSlots = new Semaphore(config.render.concurrency);
   const renderer =
     config.render.mode === 'raw'
@@ -129,6 +134,7 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
     }
 
     const res = await limiter.run(host, () => fetchPage(item.url, pol));
+    frontier.release(item);
     page.finalUrl = normalizeUrl(res.finalUrl) ?? res.finalUrl;
     page.status = res.status;
     page.contentType = res.contentType;
@@ -182,7 +188,7 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
       } catch (err) {
         warn(`${item.url}: ${errMsg(err)}`);
       } finally {
-        frontier.done();
+        frontier.done(item);
       }
     }
   }
