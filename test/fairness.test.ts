@@ -78,15 +78,53 @@ test('Frontier: wartet auf den Mindestabstand per Timer und liest ein später be
   const pacing: HostPacing = { perHost: 5, delayMs: (h) => delays.get(h) ?? 0, nextStart: () => 0 };
   const f = new Frontier(100, pacing);
   for (const u of ['http://a.test/1', 'http://a.test/2', 'http://b.test/1']) f.add(item(u));
-  assert.equal((await f.next())?.url, 'http://a.test/1');
-  // Crawl-delay erst nach dem ersten Abruf bekannt – gilt trotzdem für den nächsten.
+  const first = (await f.next())!;
+  assert.equal(first.url, 'http://a.test/1');
+  // Neuer Host: vor dem ersten fertigen Abruf kein zweiter, auch wenn perHost mehr erlaubt.
+  assert.equal((await f.next())?.url, 'http://b.test/1', 'a.test ist noch kalt, b.test ist frei');
+  // Crawl-delay erst mit dem ersten Abruf bekannt (robots.txt) – gilt trotzdem für den nächsten.
   delays.set('a.test', 300);
-  assert.equal((await f.next())?.url, 'http://b.test/1', 'b.test ist sofort frei');
+  f.release(first);
   const started = Date.now();
   assert.equal((await f.next())?.url, 'http://a.test/2');
   const waited = Date.now() - started;
   // Die Frontier gibt bis zu START_LEAD_MS vorher aus, den Rest wartet der HostLimiter.
   assert.ok(waited >= 300 - START_LEAD_MS - 20 && waited < 1000, `wartete ${waited} ms`);
+});
+
+test('Neuer Host: nur ein Abruf, bis sein Crawl-delay bekannt ist – kein Worker hängt im Limiter', async (t) => {
+  // Host A liefert seine robots.txt langsam und verlangt 1 s Abstand; Host B ist schnell.
+  const a = await startFixture({
+    '/robots.txt': { type: 'text/plain', delayMs: 300, body: 'User-agent: *\nCrawl-delay: 1\n' },
+    '/a1': { body: page({ title: 'A1', h1: ['A1'] }) },
+    '/a2': { body: page({ title: 'A2', h1: ['A2'] }) },
+  });
+  t.after(() => a.close());
+  const bPaths = ['/b1', '/b2', '/b3', '/b4', '/b5', '/b6'];
+  const b = await startFixture(Object.fromEntries(bPaths.map((p) => [p, { body: page({ title: p, h1: [p] }) }])));
+  t.after(() => b.close());
+  const bOrigin = b.origin.replace('127.0.0.1', 'localhost');
+
+  const config = parseConfig(
+    {
+      start: { urls: [`${a.origin}/a1`, `${a.origin}/a2`, ...bPaths.map((p) => bOrigin + p)] },
+      scope: { followLinks: false },
+      render: { mode: 'raw' },
+      politeness: { delayMs: 0, perHost: 2, concurrency: 2 },
+    },
+    process.cwd(),
+  );
+  const started = Date.now();
+  let lastB = 0;
+  const pages = await crawl(config, {
+    onPage: (p) => {
+      if (p.url.startsWith(bOrigin)) lastB = Date.now() - started;
+    },
+  });
+  assert.equal(pages.length, 8);
+  // Ohne die Sperre holt sich der zweite Worker /a2, wartet 300 ms auf die robots.txt und dann 1 s Crawl-delay –
+  // Host B bleibt so lange an einem einzigen Worker hängen, der selbst erst nach /a1 frei wird.
+  assert.ok(lastB < 250, `Host B erst nach ${lastB} ms fertig`);
 });
 
 test('Bulk-Modus: schneller Host ist fertig, bevor die Hälfte des langsamen durch ist', async (t) => {

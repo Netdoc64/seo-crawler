@@ -19,6 +19,8 @@ interface HostQueue {
   /** Ausgegeben, aber noch nicht mit `done()` zurückgemeldet. */
   active: number;
   lastStart: number;
+  /** Ein Abruf ist durch – robots.txt und damit das Crawl-delay dieses Hosts sind bekannt. */
+  warm: boolean;
 }
 
 const hostOf = (url: string) => new URL(url).host;
@@ -69,7 +71,7 @@ export class Frontier {
     const host = hostOf(item.url);
     let q = this.#hosts.get(host);
     if (!q) {
-      q = { items: [], head: 0, active: 0, lastStart: -Infinity };
+      q = { items: [], head: 0, active: 0, lastStart: -Infinity, warm: false };
       this.#hosts.set(host, q);
     }
     if (q.head === q.items.length) this.#ring.push(host);
@@ -126,7 +128,10 @@ export class Frontier {
     if (this.#released.has(item)) return;
     this.#released.add(item);
     const q = this.#hosts.get(hostOf(item.url));
-    if (q) q.active--;
+    if (q) {
+      q.active--;
+      q.warm = true;
+    }
     this.#wake();
   }
 
@@ -139,7 +144,9 @@ export class Frontier {
   #readyAt(host: string, q: HostQueue): number {
     const p = this.#pacing;
     if (!p) return 0;
-    if (q.active >= p.perHost) return Infinity;
+    // Neuer Host: erst ein Abruf. Sein Crawl-delay kommt mit der robots.txt – ein zweiter Worker würde sonst
+    // dessen ganze Länge im Limiter hängen, statt einen anderen Host zu bedienen.
+    if (q.active >= (q.warm ? p.perHost : 1)) return Infinity;
     // Delay live lesen: ein Crawl-delay aus der robots.txt wird erst nach dem ersten Abruf bekannt.
     return Math.max(q.lastStart + p.delayMs(host), p.nextStart(host));
   }
