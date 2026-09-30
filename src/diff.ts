@@ -48,7 +48,8 @@ export function diffRuns(before: PageResult[], after: PageResult[], fBefore: Fin
   };
 }
 
-export function formatDiff(d: RunDiff, from: number, to: number, asMarkdown = false): string {
+/** `aborted`: Lauf-Nummern, die mit Strg+C abgebrochen wurden – deren fehlende Seiten sind nur nicht erreicht. */
+export function formatDiff(d: RunDiff, from: number, to: number, asMarkdown = false, aborted: number[] = []): string {
   const lines: string[] = [];
   const cell = (s: string) => s.replace(/\|/g, '\\|');
   const head = (t: string) => lines.push(asMarkdown ? `\n### ${t}\n` : `\n${t}`);
@@ -57,6 +58,12 @@ export function formatDiff(d: RunDiff, from: number, to: number, asMarkdown = fa
     `${d.added.length} neue Seiten · ${d.removed.length} verschwunden · ${d.changes.length} Änderungen · ` +
       `${d.newFindings.length} neue Befunde · ${d.resolvedFindings.length} behoben`,
   );
+  if (aborted.length) {
+    const note =
+      `Lauf ${aborted.map((id) => `#${id}`).join(' und ')} wurde abgebrochen – neue, verschwundene Seiten und ` +
+      `behobene Befunde können daran liegen, dass Seiten nicht mehr erreicht wurden.`;
+    lines.push(asMarkdown ? `\n> **${note}**` : note);
+  }
 
   if (d.changes.length) {
     head('Geänderte Felder');

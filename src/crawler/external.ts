@@ -8,6 +8,8 @@ export interface ExternalCheckOptions {
   timeoutMs: number;
   perHost: number;
   delayMs: number;
+  /** Abbruch: noch nicht gestartete Prüfungen fallen weg, fertige werden geliefert. */
+  signal?: AbortSignal;
 }
 
 /** 429: höchstens so lange auf Retry-After warten. */
@@ -40,23 +42,30 @@ function toPageResult(url: string, res: FetchResult): PageResult {
 export async function checkExternalLinks(urls: string[], opts: ExternalCheckOptions): Promise<PageResult[]> {
   const limiter = new HostLimiter(opts.perHost, opts.delayMs);
   const base = { userAgent: opts.userAgent, timeoutMs: opts.timeoutMs, readBody: false };
-  return Promise.all(
+  const { signal } = opts;
+  const results = await Promise.all(
     urls.map(async (url) => {
       const host = new URL(url).host;
-      let res = await limiter.run(host, () => fetchPage(url, { ...base, method: 'HEAD' }));
-      // Manche Server verweigern HEAD (405/501) oder brechen bei HEAD ab – dann einmal GET.
-      if (res.status === 405 || res.status === 501 || res.status === 0) {
-        res = await limiter.run(host, () => fetchPage(url, { ...base, method: 'GET' }));
-      }
-      // 429 mit Retry-After: einmal nach der Wartezeit wiederholen, sonst als 429 melden.
-      if (res.status === 429) {
-        const retryAfterMs = Number(res.headers['retry-after']) * 1000;
-        if (Number.isFinite(retryAfterMs) && retryAfterMs > 0 && retryAfterMs <= RETRY_AFTER_MAX_MS) {
-          await sleep(retryAfterMs);
-          res = await limiter.run(host, () => fetchPage(url, { ...base, method: 'GET' }));
+      try {
+        let res = await limiter.run(host, () => fetchPage(url, { ...base, method: 'HEAD' }), signal);
+        // Manche Server verweigern HEAD (405/501) oder brechen bei HEAD ab – dann einmal GET.
+        if (res.status === 405 || res.status === 501 || res.status === 0) {
+          res = await limiter.run(host, () => fetchPage(url, { ...base, method: 'GET' }), signal);
         }
+        // 429 mit Retry-After: einmal nach der Wartezeit wiederholen, sonst als 429 melden.
+        if (res.status === 429) {
+          const retryAfterMs = Number(res.headers['retry-after']) * 1000;
+          if (Number.isFinite(retryAfterMs) && retryAfterMs > 0 && retryAfterMs <= RETRY_AFTER_MAX_MS) {
+            await sleep(retryAfterMs, signal);
+            res = await limiter.run(host, () => fetchPage(url, { ...base, method: 'GET' }), signal);
+          }
+        }
+        return toPageResult(url, res);
+      } catch (err) {
+        if (signal?.aborted) return null;
+        throw err;
       }
-      return toPageResult(url, res);
     }),
   );
+  return results.filter((p) => p !== null);
 }

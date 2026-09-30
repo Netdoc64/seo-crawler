@@ -16,6 +16,11 @@ export interface CrawlHooks {
   onWarn?(message: string): void;
   /** Nach dem Sammeln der Start-URLs: alle URLs aus Sitemaps (normalisiert). */
   onSeeds?(info: { sitemapUrls: Set<string> }): void;
+  /**
+   * Abbruch: keine neuen URLs mehr, laufende Abrufe laufen zu Ende, der Browser wird geschlossen
+   * und `crawl()` liefert die bis dahin fertigen Seiten.
+   */
+  signal?: AbortSignal;
 }
 
 export interface Seed {
@@ -23,7 +28,11 @@ export interface Seed {
   source: 'url' | 'file' | 'sitemap';
 }
 
-async function collectSeeds(config: Config, warn: (m: string) => void): Promise<{ seeds: Seed[]; sitemapUrls: Set<string> }> {
+async function collectSeeds(
+  config: Config,
+  warn: (m: string) => void,
+  signal?: AbortSignal,
+): Promise<{ seeds: Seed[]; sitemapUrls: Set<string> }> {
   const raw: { url: string; source: Seed['source'] }[] = config.start.urls.map((url) => ({ url, source: 'url' }));
   if (config.start.urlFile) {
     const lines = (await readFile(config.start.urlFile, 'utf8')).split(/\r?\n/).map((l) => l.trim());
@@ -31,13 +40,15 @@ async function collectSeeds(config: Config, warn: (m: string) => void): Promise<
   }
   const sitemapUrls = new Set<string>();
   for (const sitemap of config.start.sitemaps) {
+    if (signal?.aborted) break;
     try {
-      for (const url of await loadSitemap(sitemap, config.politeness)) {
+      for (const url of await loadSitemap(sitemap, { ...config.politeness, signal })) {
         raw.push({ url, source: 'sitemap' });
         const n = normalizeUrl(url);
         if (n) sitemapUrls.add(n);
       }
     } catch (err) {
+      if (signal?.aborted) break;
       warn(`Sitemap ${sitemap}: ${errMsg(err)}`);
     }
   }
@@ -59,7 +70,10 @@ async function collectSeeds(config: Config, warn: (m: string) => void): Promise<
 export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<PageResult[]> {
   const pol = config.politeness;
   const warn = hooks.onWarn ?? (() => {});
-  const { seeds, sitemapUrls } = await collectSeeds(config, warn);
+  const signal = hooks.signal;
+  const { seeds, sitemapUrls } = await collectSeeds(config, warn, signal);
+  // Abbruch vor oder während des Seed-Sammelns: nichts crawlen, der Lauf endet mit 0 Seiten.
+  if (signal?.aborted) return [];
   if (seeds.length === 0) throw new Error('Keine Start-URLs – urls, urlFile oder sitemaps angeben.');
   hooks.onSeeds?.({ sitemapUrls });
 
@@ -95,17 +109,6 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
           waitUntil: config.render.waitUntil,
           blockResources: config.render.blockResources,
         });
-  if (renderer) {
-    try {
-      await renderer.start();
-    } catch (err) {
-      throw new Error(
-        `Chromium startet nicht (${errMsg(err).split('\n')[0]}).\n` +
-          `Einmalig „npm run setup“ ausführen oder mit --mode raw ohne Browser crawlen.`,
-      );
-    }
-  }
-
   async function visit(item: QueueItem): Promise<PageResult> {
     const page: PageResult = {
       url: item.url,
@@ -133,7 +136,7 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
       limiter.setDelay(host, await robots.crawlDelayMs(item.url));
     }
 
-    const res = await limiter.run(host, () => fetchPage(item.url, pol));
+    const res = await limiter.run(host, () => fetchPage(item.url, pol), signal);
     frontier.release(item);
     page.finalUrl = normalizeUrl(res.finalUrl) ?? res.finalUrl;
     page.status = res.status;
@@ -151,10 +154,11 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
 
     page.raw = extract(res.body, page.finalUrl, { status: res.status, timeMs: res.timeMs, bytes: res.bytes });
     const ok = res.status >= 200 && res.status < 300;
-    if (renderer && ok && (config.render.mode === 'render' || needsRender(page.raw, res.body))) {
+    // Nach einem Abbruch nicht mehr rendern – das wäre ein neuer Abruf; die rohe Fassung zählt.
+    if (renderer && ok && !signal?.aborted && (config.render.mode === 'render' || needsRender(page.raw, res.body))) {
       const finalHost = new URL(page.finalUrl).host;
       try {
-        const r = await renderSlots.use(() => limiter.run(finalHost, () => renderer.render(page.finalUrl)));
+        const r = await renderSlots.use(() => limiter.run(finalHost, () => renderer.render(page.finalUrl), signal));
         page.rendered = extract(r.html, page.finalUrl, {
           status: r.status || res.status,
           timeMs: r.timeMs,
@@ -162,8 +166,10 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
         });
         if (r.timedOut) page.renderError = `${config.render.waitUntil} nicht erreicht, Stand nach ${config.render.timeoutMs} ms übernommen`;
       } catch (err) {
-        page.renderError = errMsg(err);
-        warn(`Rendern fehlgeschlagen: ${page.finalUrl}: ${page.renderError}`);
+        if (!signal?.aborted) {
+          page.renderError = errMsg(err);
+          warn(`Rendern fehlgeschlagen: ${page.finalUrl}: ${page.renderError}`);
+        }
       }
     }
 
@@ -186,21 +192,36 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
         results.push(page);
         hooks.onPage?.(page, { done: results.length, queued: frontier.pending });
       } catch (err) {
-        warn(`${item.url}: ${errMsg(err)}`);
+        // Beim Abbruch noch nicht begonnene Abrufe (z. B. im Crawl-delay) fallen still weg.
+        if (!signal?.aborted) warn(`${item.url}: ${errMsg(err)}`);
       } finally {
         frontier.done(item);
       }
     }
   }
 
+  const onAbort = () => frontier.close();
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
+    if (renderer && !signal?.aborted) {
+      try {
+        await renderer.start();
+      } catch (err) {
+        throw new Error(
+          `Chromium startet nicht (${errMsg(err).split('\n')[0]}).\n` +
+            `Einmalig „npm run setup“ ausführen oder mit --mode raw ohne Browser crawlen.`,
+        );
+      }
+    }
+    if (signal?.aborted) frontier.close();
     await Promise.all(Array.from({ length: pol.concurrency }, () => worker()));
   } finally {
+    signal?.removeEventListener('abort', onAbort);
     await renderer?.close();
   }
 
-  // Externe Link-Ziele erst nach dem Crawl prüfen, jedes eindeutige Ziel genau einmal.
-  if (config.scope.checkExternal) {
+  // Externe Link-Ziele erst nach dem Crawl prüfen, jedes eindeutige Ziel genau einmal – nach einem Abbruch gar nicht.
+  if (config.scope.checkExternal && !signal?.aborted) {
     const targets = new Set<string>();
     for (const p of results) {
       for (const link of (p.rendered ?? p.raw)?.links ?? []) {
@@ -218,6 +239,7 @@ export async function crawl(config: Config, hooks: CrawlHooks = {}): Promise<Pag
       timeoutMs: pol.timeoutMs,
       perHost: pol.perHost,
       delayMs: pol.delayMs,
+      signal,
     });
     for (const ep of externalPages) {
       results.push(ep);

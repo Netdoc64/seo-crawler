@@ -47,6 +47,13 @@ im Repo – als Ort dient die Config-Datei, die URL steht in der Meldung. Deshal
 Filter nach Schwere und Regel, Suche in URL und Text, sortierbare Seitenliste, Hell/Dunkel über `prefers-color-scheme`.
 Bei `report` sind die Regelbeschreibungen nur enthalten, wenn sie noch bekannt sind – sonst bleibt die Spalte leer.
 
+**Abbrechen mit Strg+C:** Das erste Strg+C holt keine neuen Seiten mehr, lässt laufende Abrufe zu Ende laufen,
+schließt den Browser und wertet das Bisherige ganz normal aus (Regeln, Speichern, Berichte). Wartezeiten aus
+Crawl-delay und das Laden von Sitemaps enden sofort; externe Links werden nach einem Abbruch nicht mehr geprüft.
+`runs` zeigt solche Läufe als „abgebrochen nach N Seiten“, `diff` ohne Lauf-Nummern überspringt sie.
+Ein zweites Strg+C beendet sofort (Exitcode 130); der Lauf bleibt dann „nicht abgeschlossen“.
+Ältere DB-Dateien werden beim Öffnen automatisch um die neue Spalte ergänzt.
+
 ## Konfiguration
 
 Siehe [examples/example.yaml](examples/example.yaml). Alle Felder sind optional; relative Pfade gelten relativ zur Config-Datei.

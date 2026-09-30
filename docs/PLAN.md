@@ -8,7 +8,7 @@ Nichts umsetzen, was unter „Nicht tun“ steht. Unklar? Im PR als offene Frage
 
 | # | Aufgabe | Größe | Braucht |
 |---|---|---|---|
-| T1 | Sauberer Abbruch mit Strg+C | klein | – |
+| T1 | Sauberer Abbruch mit Strg+C ✅ | klein | – |
 | T2 | HTML-Bericht ✅ | mittel | – |
 | T3 | Canonical-Ziel prüfen ✅ | klein | – |
 | T4 | hreflang prüfen ✅ | mittel | – |

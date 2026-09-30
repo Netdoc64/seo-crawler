@@ -17,7 +17,12 @@ export interface Summary {
   byStatus: [string, number][];
   totals: Record<Severity, number>;
   rules: RuleSummary[];
+  /** Mit Strg+C abgebrochen – Seiten und Befunde sind unvollständig. */
+  aborted: boolean;
 }
+
+/** Ein Satz für jede Ausgabe, damit ein abgebrochener Lauf nirgends als vollständig durchgeht. */
+export const abortedNote = (s: Summary) => `Lauf abgebrochen nach ${s.pages} Seiten – Ergebnis unvollständig.`;
 
 function statusBucket(p: PageResult): string {
   if (p.robotsBlocked) return 'robots.txt';
@@ -25,7 +30,7 @@ function statusBucket(p: PageResult): string {
   return `${Math.floor(p.status / 100)}xx`;
 }
 
-export function summarize(runId: number, name: string, pages: PageResult[], findings: Finding[]): Summary {
+export function summarize(runId: number, name: string, pages: PageResult[], findings: Finding[], aborted = false): Summary {
   // Externe Link-Ziele sind keine gecrawlten Seiten – eigene Zahl, nicht in den Seitenzählern.
   const internal = pages.filter((p) => !p.external);
   const byStatus = new Map<string, number>();
@@ -52,6 +57,7 @@ export function summarize(runId: number, name: string, pages: PageResult[], find
     byStatus: [...byStatus.entries()].sort(),
     totals,
     rules,
+    aborted,
   };
 }
 
@@ -67,7 +73,8 @@ export function formatConsole(s: Summary, examples = 3): string {
     `Lauf #${s.runId} „${s.name}“: ${s.pages} Seiten, davon ${s.rendered} gerendert` +
       (s.external ? ` · ${s.external} extern geprüft` : ''),
   );
-  lines.push(`Status: ${s.byStatus.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
+  if (s.aborted) lines.push(abortedNote(s));
+  lines.push(`Status:${s.byStatus.map(([k, v]) => `${k} ${v}`).join(' · ')}`);
   lines.push(`Befunde: ${s.totals.error} Fehler · ${s.totals.warning} Warnungen · ${s.totals.info} Hinweise`);
   if (s.rules.length === 0) return lines.join('\n');
   lines.push('');
@@ -86,6 +93,7 @@ export function formatMarkdown(s: Summary, maxPerRule = 50): string {
   const lines: string[] = [];
   lines.push(`## SEO-Crawl „${md(s.name)}“ (Lauf #${s.runId})`);
   lines.push('');
+  if (s.aborted) lines.push(`> **${abortedNote(s)}**`, '');
   lines.push(
     `${s.pages} Seiten, davon ${s.rendered} gerendert` +
       (s.external ? ` · ${s.external} extern geprüft` : '') +
